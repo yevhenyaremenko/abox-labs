@@ -51,6 +51,8 @@ spec:
     tools:
       querydoc:
         enabled: false
+      grafana-mcp:
+        enabled: false
     agents:
       cilium-policy-agent:
         enabled: false
@@ -69,8 +71,6 @@ spec:
       argo-rollouts-conversion-agent:
         enabled: false
       observability-agent:
-        enabled: false
-      grafana-mcp:
         enabled: false
     providers:
       default: openAI
