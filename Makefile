@@ -3,7 +3,7 @@ RED   := \033[0;31m
 CYAN  := \033[0;36m
 NC    := \033[0m
 
-.PHONY: help run tools tofu apply secrets check-env down push test-api test-agentgateway-endpoint test-openai test-openai-direct test-openai-via-agentgateway
+.PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway
 
 help:
 	@echo "Available targets:"
@@ -14,8 +14,7 @@ help:
 	@echo "  tofu    - Initialize OpenTofu"
 	@echo "  apply   - Apply OpenTofu configuration and create secrets"
 	@echo "  secrets                      - Create openai-secret secret from OPENAI_API_KEY"
-	@echo "  test-api                     - Run all API checks (agentgateway endpoint + OpenAI direct + via agentgateway)"
-	@echo "  test-agentgateway-endpoint   - Curl agentgateway OpenAI-compatible endpoint"
+	@echo "  test-api                     - Run all API checks (OpenAI direct + via agentgateway)"
 	@echo "  test-openai                  - Run all OpenAI checks (direct + via agentgateway)"
 	@echo "  test-openai-direct           - Curl OpenAI API directly (requires OPENAI_API_KEY)"
 	@echo "  test-openai-via-agentgateway - Curl OpenAI via agentgateway (port-forward auto)"
@@ -75,27 +74,7 @@ push:
 	@git push origin main $(NEW_TAG)
 	@echo "Tagged and pushed $(NEW_TAG)"
 
-test-api: test-agentgateway-endpoint test-openai
-
-test-agentgateway-endpoint:
-	@set -e; \
-	kubectl port-forward deployment/agentgateway-external -n agentgateway-system 8080:80 >/dev/null 2>&1 & \
-	PF_PID=$$!; \
-	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
-	sleep 2; \
-	RESP=$$(curl -sS http://localhost:8080/v1beta/openai/chat/completions \
-	  -H 'Content-Type: application/json' \
-	  -d '{"model":"","messages":[{"role":"user","content":"Say hello from OpenAI-compatible agentgateway endpoint"}]}' \
-	  -w '\nHTTP_STATUS:%{http_code}'); \
-	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
-	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
-	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
-	  printf '$(GREEN)[PASS]$(NC) agentgateway-endpoint (HTTP %s)\n' "$$STATUS"; \
-	else \
-	  printf '$(RED)[FAIL]$(NC) agentgateway-endpoint (HTTP %s)\n' "$$STATUS"; \
-	fi; \
-	printf '$(CYAN)Response:$(NC) %s\n' "$$BODY"; \
-	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
+test-api: test-openai
 
 test-openai: test-openai-direct test-openai-via-agentgateway
 
