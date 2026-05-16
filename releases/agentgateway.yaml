@@ -31,6 +31,17 @@ spec:
     namespace: flux-system
   install:
     createNamespace: true
+  values:
+    config:
+      llm:
+        models:
+          - name: gpt-5.4-mini
+            provider: openai
+            params:
+              model: gpt-5.4-mini
+              apiKeyRef:
+                secretName: agentgateway-credentials
+                key: openai-api-key
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -46,3 +57,38 @@ spec:
     allowedRoutes:
       namespaces:
         from: All
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: openai
+  namespace: agentgateway-system
+spec:
+  ai:
+    provider:
+      openai:
+        model: gpt-5.4-mini
+  policies:
+    auth:
+      secretRef:
+        name: agentgateway-credentials
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: openai
+  namespace: agentgateway-system
+spec:
+  parentRefs:
+  - name: agentgateway-external
+    namespace: agentgateway-system
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /v1beta/openai/openai
+    backendRefs:
+    - name: openai
+      namespace: agentgateway-system
+      group: agentgateway.dev
+      kind: AgentgatewayBackend
