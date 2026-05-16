@@ -117,3 +117,42 @@ spec:
     - name: kagent-ui
       namespace: kagent
       port: 8080
+---
+# ModelConfig.spec.apiKeySecret is required by the CRD, but kagent must not use
+# the key directly — all traffic routes through agentgateway, which injects the
+# real credential via AgentgatewayBackend auth policy. The placeholder secret
+# satisfies the schema without exposing a real key to kagent.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kagent-openai-placeholder
+  namespace: kagent
+stringData:
+  OPENAI_API_KEY: placeholder
+---
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: agentgateway-openai
+  namespace: kagent
+spec:
+  apiKeySecret: kagent-openai-placeholder
+  apiKeySecretKey: OPENAI_API_KEY
+  provider: OpenAI
+  model: gpt-5.4-mini
+  openAI:
+    baseUrl: http://agentgateway-external.agentgateway-system.svc.cluster.local/v1beta/openai/openai
+---
+apiVersion: kagent.dev/v1alpha2
+kind: ModelConfig
+metadata:
+  name: default-model-config
+  namespace: kagent
+spec:
+  apiKeySecret: kagent-openai-placeholder
+  apiKeySecretKey: OPENAI_API_KEY
+  provider: OpenAI
+  model: gpt-5.4-mini
+  openAI:
+    baseUrl: http://agentgateway-external.agentgateway-system.svc.cluster.local/v1beta/openai/openai
