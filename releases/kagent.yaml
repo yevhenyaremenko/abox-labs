@@ -64,6 +64,14 @@ spec:
         enabled: false
       istio-manager-agent:
         enabled: false
+      promql-agent:
+        enabled: false
+      argo-rollouts:
+        enabled: false
+      observability-agent:
+        enabled: false
+      grafana-mcp:
+        enabled: false
     providers:
       default: openAI
       openAI:
