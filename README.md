@@ -1,5 +1,7 @@
 # abox
 
+> **Note:** This is a personal clone of [den-vasyliev/abox](https://github.com/den-vasyliev/abox) for learning purposes.
+
 > One command. Full AI infrastructure.
 
 `make run` gives you a local Kubernetes cluster with everything an AI project needs: an AI-aware API gateway, an agent runtime, observability, distributed tracing, and an eval harness — ready to use.
@@ -37,7 +39,7 @@ make run  →  scripts/setup.sh
   → tofu apply (bootstrap/)
       → KinD cluster
       → Flux Operator + FluxInstance
-      → ResourceSetInputProvider   polls oci://ghcr.io/den-vasyliev/abox/releases
+      → ResourceSetInputProvider   polls oci://ghcr.io/yevhenyaremenko/abox-labs/releases
       → ResourceSet                creates OCIRepository + 2 Kustomizations
           → releases/crds/    gateway-api-crds, agentgateway-crds, kagent-crds
           → releases/         agentgateway (Gateway + GatewayClass)

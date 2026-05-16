@@ -20,7 +20,7 @@ abox is a local Kubernetes AI infrastructure sandbox. It provides a reproducible
 ## Getting started
 
 ```bash
-git clone https://github.com/den-vasyliev/abox
+git clone https://github.com/yevhenyaremenko/abox-labs
 cd abox
 make run   # provisions a full local cluster
 ```
