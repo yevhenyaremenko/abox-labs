@@ -66,7 +66,7 @@ spec:
         enabled: false
       promql-agent:
         enabled: false
-      argo-rollouts:
+      argo-rollouts-conversion-agent:
         enabled: false
       observability-agent:
         enabled: false
