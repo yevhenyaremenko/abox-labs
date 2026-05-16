@@ -19,7 +19,7 @@ help:
 	@echo "  test-openai-direct           - Curl OpenAI API directly (requires OPENAI_API_KEY)"
 	@echo "  test-openai-via-agentgateway - Curl OpenAI via agentgateway (port-forward auto)"
 
-run:
+run: check-env
 	@bash scripts/setup.sh
 
 tools:
