@@ -40,8 +40,8 @@ spec:
             params:
               model: gpt-5.4-mini
               apiKeyRef:
-                secretName: agentgateway-credentials
-                key: openai-api-key
+                secretName: openai-secret
+                key: Authorization
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -71,7 +71,7 @@ spec:
   policies:
     auth:
       secretRef:
-        name: agentgateway-credentials
+        name: openai-secret
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute

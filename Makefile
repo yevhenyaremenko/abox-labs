@@ -1,3 +1,10 @@
+GREEN := \033[0;32m
+RED   := \033[0;31m
+CYAN  := \033[0;36m
+NC    := \033[0m
+
+.PHONY: help run tools tofu apply secrets check-env down push test-api test-agentgateway-endpoint test-openai test-openai-direct test-openai-via-agentgateway
+
 help:
 	@echo "Available targets:"
 	@echo "  run     - Bootstrap the full environment (install tools, provision cluster)"
@@ -6,7 +13,12 @@ help:
 	@echo "  tools   - Install necessary tools only"
 	@echo "  tofu    - Initialize OpenTofu"
 	@echo "  apply   - Apply OpenTofu configuration and create secrets"
-	@echo "  secrets - Create agentgateway-credentials secret from OPENAI_API_KEY"
+	@echo "  secrets                      - Create openai-secret secret from OPENAI_API_KEY"
+	@echo "  test-api                     - Run all API checks (agentgateway endpoint + OpenAI direct + via agentgateway)"
+	@echo "  test-agentgateway-endpoint   - Curl agentgateway OpenAI-compatible endpoint"
+	@echo "  test-openai                  - Run all OpenAI checks (direct + via agentgateway)"
+	@echo "  test-openai-direct           - Curl OpenAI API directly (requires OPENAI_API_KEY)"
+	@echo "  test-openai-via-agentgateway - Curl OpenAI via agentgateway (port-forward auto)"
 
 run:
 	@bash scripts/setup.sh
@@ -35,11 +47,11 @@ secrets: check-env
 		done; \
 		echo "Namespace agentgateway-system is ready"; \
 	fi; \
-	if kubectl get secret agentgateway-credentials -n agentgateway-system >/dev/null 2>&1; then \
-		echo "Secret agentgateway-credentials already exists, skipping"; \
+	if kubectl get secret openai-secret -n agentgateway-system >/dev/null 2>&1; then \
+		echo "Secret openai-secret already exists, skipping"; \
 	else \
-		kubectl create secret generic agentgateway-credentials \
-			--from-literal=openai-api-key="$$OPENAI_API_KEY" \
+		kubectl create secret generic openai-secret \
+			--from-literal=Authorization="Bearer $$OPENAI_API_KEY" \
 			-n agentgateway-system; \
 	fi
 
@@ -62,3 +74,64 @@ push:
 	@git tag $(NEW_TAG)
 	@git push origin main $(NEW_TAG)
 	@echo "Tagged and pushed $(NEW_TAG)"
+
+test-api: test-agentgateway-endpoint test-openai
+
+test-agentgateway-endpoint:
+	@set -e; \
+	kubectl port-forward deployment/agentgateway-external -n agentgateway-system 8080:80 >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS http://localhost:8080/v1beta/openai/chat/completions \
+	  -H 'Content-Type: application/json' \
+	  -d '{"model":"","messages":[{"role":"user","content":"Say hello from OpenAI-compatible agentgateway endpoint"}]}' \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) agentgateway-endpoint (HTTP %s)\n' "$$STATUS"; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) agentgateway-endpoint (HTTP %s)\n' "$$STATUS"; \
+	fi; \
+	printf '$(CYAN)Response:$(NC) %s\n' "$$BODY"; \
+	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
+
+test-openai: test-openai-direct test-openai-via-agentgateway
+
+test-openai-direct: check-env
+	@set -e; \
+	RESP=$$(curl -sS https://api.openai.com/v1/chat/completions \
+	  -H "Authorization: Bearer $$OPENAI_API_KEY" \
+	  -H 'Content-Type: application/json' \
+	  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"Say hello from direct OpenAI test"}]}' \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) openai-direct (HTTP %s)\n' "$$STATUS"; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) openai-direct (HTTP %s)\n' "$$STATUS"; \
+	fi; \
+	printf '$(CYAN)Response:$(NC) %s\n' "$$BODY"; \
+	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
+
+test-openai-via-agentgateway:
+	@set -e; \
+	kubectl port-forward deployment/agentgateway-external -n agentgateway-system 8080:80 >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS http://localhost:8080/v1beta/openai/openai/chat/completions \
+	  -H 'Content-Type: application/json' \
+	  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"Say hello from OpenAI via agentgateway"}]}' \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) openai-via-agentgateway (HTTP %s)\n' "$$STATUS"; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) openai-via-agentgateway (HTTP %s)\n' "$$STATUS"; \
+	fi; \
+	printf '$(CYAN)Response:$(NC) %s\n' "$$BODY"; \
+	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
