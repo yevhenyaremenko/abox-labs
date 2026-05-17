@@ -97,6 +97,25 @@ make push   # bumps patch version, tags, pushes → CI publishes OCI artifact �
 | `scripts/setup.sh` | Full setup script (`make run`) |
 | `.github/workflows/flux-push.yaml` | CI: publish `releases/` as OCI artifact on `v*` tags |
 
+## Labs
+
+### Lab 3 — MCP Elicitation and Autonomous Remediation
+
+Lab 3 introduces two new components and a broken target for the agent to fix.
+
+#### Components
+
+| Resource | File | Purpose |
+|---|---|---|
+| `elicitation-mcp-server` (Deployment, `mcp`) | `releases/elicitation-mcp.yaml` | Custom Python MCP server (`abox-labs-mcp-server`) that exposes K8s operations — `list_pods`, `get_pod_logs`, `scale_deployment` — and uses MCP Elicitation to interactively prompt the user when a request is ambiguous (e.g. no namespace specified). |
+| `elicitation-mcp-server` (RemoteMCPServer, `kagent`) | `releases/elicitation-remote-mcp.yaml` | kagent `RemoteMCPServer` that registers the elicitation server with the agent runtime over StreamableHTTP. |
+| `lab3-agent` (Agent, `kagent`) | `releases/lab3-agent.yaml` | kagent `Agent` wired to the elicitation MCP server. Handles cluster queries, confirms destructive actions, and asks for clarification when the request is underspecified. |
+| `sample-app` (Deployment, `sample-app`) | `releases/sample-app.yaml` | **Intentionally broken** nginx deployment whose readiness and liveness probes point to `/healthz` (nginx does not serve this path). The pod will never become Ready. This is the lab exercise target — `lab3-agent` is expected to detect the misconfigured probes and fix them. |
+
+#### MCP server health probe
+
+FastMCP's StreamableHTTP transport requires `Accept: application/json, text/event-stream` on the `GET /mcp` endpoint. Kubernetes kubelet probes do not send this header and receive `406 Not Acceptable`. The server exposes a dedicated `GET /health` endpoint for probes; the Deployment's `readinessProbe` uses `/health` instead of `/mcp`.
+
 ## Adding components
 
 1. Put CRD charts in `releases/crds/` as HelmReleases.
