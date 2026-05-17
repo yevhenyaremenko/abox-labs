@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: elicitation-mcp-sa
+  namespace: mcp
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: elicitation-mcp-role
+rules:
+- apiGroups: [""]
+  resources: ["namespaces", "pods", "pods/log"]
+  verbs: ["get", "list"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list"]
+- apiGroups: ["apps"]
+  resources: ["deployments/scale"]
+  verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: elicitation-mcp-rolebinding
+subjects:
+- kind: ServiceAccount
+  name: elicitation-mcp-sa
+  namespace: mcp
+roleRef:
+  kind: ClusterRole
+  name: elicitation-mcp-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elicitation-mcp-server
+  namespace: mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elicitation-mcp-server
+  template:
+    metadata:
+      labels:
+        app: elicitation-mcp-server
+    spec:
+      serviceAccountName: elicitation-mcp-sa
+      containers:
+      - name: server
+        image: ghcr.io/yevhenyaremenko/abox-labs-mcp-server:main
+        ports:
+        - containerPort: 3000
+        env:
+        - name: MCP_TRANSPORT_MODE
+          value: "http"
+        - name: HOST
+          value: "0.0.0.0"
+        - name: PORT
+          value: "3000"
+        readinessProbe:
+          httpGet:
+            path: /mcp
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: elicitation-mcp-server
+  namespace: mcp
+spec:
+  selector:
+    app: elicitation-mcp-server
+  ports:
+  - port: 3000
+    targetPort: 3000

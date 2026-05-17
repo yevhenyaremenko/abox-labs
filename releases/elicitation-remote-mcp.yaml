@@ -1,0 +1,12 @@
+apiVersion: kagent.dev/v1alpha2
+kind: RemoteMCPServer
+metadata:
+  name: elicitation-mcp-server
+  namespace: kagent
+spec:
+  description: "K8s operations MCP server with Elicitation for ambiguous queries"
+  protocol: STREAMABLE_HTTP
+  url: http://elicitation-mcp-server.mcp.svc.cluster.local:3000/mcp
+  sseReadTimeout: 5m0s
+  terminateOnClose: true
+  timeout: 30s
