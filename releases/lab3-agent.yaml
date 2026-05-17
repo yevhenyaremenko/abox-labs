@@ -1,33 +1,43 @@
-apiVersion: kagent.dev/v1alpha2
-kind: Agent
+apiVersion: apps/v1
+kind: Deployment
 metadata:
   name: lab3-agent
   namespace: kagent
+  labels:
+    app: kagent
+    kagent: lab3-agent
 spec:
-  type: Declarative
-  description: Kubernetes operations agent with interactive clarification via MCP Elicitation.
-  declarative:
-    modelConfig: default-model-config
-    systemMessage: |
-      You are a Kubernetes operations assistant. You help users inspect and manage
-      resources in their cluster. When a user's request is ambiguous (no namespace
-      or resource name specified), use the available tools which will interactively
-      ask the user to clarify before executing.
-
-      Available operations:
-      - List pods in a namespace
-      - Fetch logs from a specific pod
-      - Scale a deployment to a desired replica count
-
-      Always confirm destructive or modifying actions (scale) with the user before
-      proceeding. Prefer read operations first to show context.
-    tools:
-    - type: McpServer
-      mcpServer:
-        name: elicitation-mcp-server
-        kind: RemoteMCPServer
-        apiGroup: kagent.dev
-        toolNames:
-        - list_pods
-        - get_pod_logs
-        - scale_deployment
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kagent
+      kagent: lab3-agent
+  template:
+    metadata:
+      labels:
+        app: kagent
+        kagent: lab3-agent
+    spec:
+      containers:
+        - name: kagent
+          image: cr.kagent.dev/kagent-dev/kagent/app:0.7.23
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 1
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 1
+            failureThreshold: 3
