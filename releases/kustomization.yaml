@@ -4,3 +4,7 @@ kind: Kustomization
 resources:
   - agentgateway.yaml
   - kagent.yaml
+  - mcp.yaml
+  - mcp-agentgateway.yaml
+  - remote-agw-mcp.yaml
+  - aire-agent.yaml

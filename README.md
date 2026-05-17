@@ -16,7 +16,38 @@
 | **KinD** | Local Kubernetes (1 control-plane + 2 workers) - can be any k8s |
 | **cloud-provider-kind** | LoadBalancer support so gateway gets a real IP for local development |
 
-## Quickstart
+## Required Environment Variables
+
+| Variable | Description |
+|---|---|
+| `OPENAI_API_KEY` | OpenAI API key — injected into `openai-secret` in `agentgateway-system` |
+| `GITHUB_TOKEN` | GitHub Personal Access Token — injected into `github-mcp-secret` in `mcp` |
+
+### Creating a GitHub Personal Access Token (fine-grained, least privilege)
+
+Create a **fine-grained** PAT scoped to only the repository the AIRE agent will manage:
+
+1. Go to **GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
+2. Set **Token name** (e.g. `aire-agent-mcp`).
+3. Under **Resource owner**, select the organisation or user that owns the target repository.
+4. Under **Repository access**, choose **Only select repositories** and pick the single target repo.
+5. Under **Repository permissions**, grant only:
+   | Permission | Access |
+   |---|---|
+   | **Contents** | Read and write |
+   | **Pull requests** | Read and write |
+6. Leave all other permissions at *No access*.
+7. Click **Generate token** and copy the value.
+
+Export it before running `make`:
+
+```bash
+export GITHUB_TOKEN=<your-fine-grained-pat>
+```
+
+> **Note:** Classic PATs are not recommended. Fine-grained tokens cannot be used across organisations, so create one per target organisation/repository.
+
+
 
 ```bash
 make run

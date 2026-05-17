@@ -13,7 +13,7 @@ help:
 	@echo "  tools   - Install necessary tools only"
 	@echo "  tofu    - Initialize OpenTofu"
 	@echo "  apply   - Apply OpenTofu configuration and create secrets"
-	@echo "  secrets                      - Create openai-secret secret from OPENAI_API_KEY"
+	@echo "  secrets                      - Create openai-secret from OPENAI_API_KEY and github-mcp-secret from GITHUB_TOKEN"
 	@echo "  test-api                     - Run all API checks (OpenAI direct + via agentgateway)"
 	@echo "  test-openai                  - Run all OpenAI checks (direct + via agentgateway)"
 	@echo "  test-openai-direct           - Curl OpenAI API directly (requires OPENAI_API_KEY)"
@@ -52,11 +52,34 @@ secrets: check-env
 		kubectl create secret generic openai-secret \
 			--from-literal=Authorization="Bearer $$OPENAI_API_KEY" \
 			-n agentgateway-system; \
+	fi; \
+	deadline=$$((SECONDS + 300)); \
+	if ! kubectl get namespace mcp >/dev/null 2>&1; then \
+		echo "Waiting for namespace mcp (up to 5 min)..."; \
+		until kubectl get namespace mcp >/dev/null 2>&1; do \
+			if [ $$SECONDS -ge $$deadline ]; then \
+				echo "Timeout: namespace mcp not found after 5 minutes"; \
+				exit 1; \
+			fi; \
+			sleep 5; \
+		done; \
+		echo "Namespace mcp is ready"; \
+	fi; \
+	if kubectl get secret github-mcp-secret -n mcp >/dev/null 2>&1; then \
+		echo "Secret github-mcp-secret already exists, skipping"; \
+	else \
+		kubectl create secret generic github-mcp-secret \
+			--from-literal=GITHUB_PERSONAL_ACCESS_TOKEN="$$GITHUB_TOKEN" \
+			-n mcp; \
 	fi
 
 check-env:
 	@if [ -z "$$OPENAI_API_KEY" ]; then \
 		echo "Error: OPENAI_API_KEY is not set"; \
+		exit 1; \
+	fi
+	@if [ -z "$$GITHUB_TOKEN" ]; then \
+		echo "Error: GITHUB_TOKEN is not set (GitHub Personal Access Token required for github-mcp-secret)"; \
 		exit 1; \
 	fi
 

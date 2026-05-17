@@ -1,0 +1,58 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: agentgateway
+  namespace: mcp
+spec:
+  gatewayClassName: agentgateway
+  listeners:
+  - protocol: HTTP
+    port: 3000
+    name: http
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayBackend
+metadata:
+  name: github-mcp-backend
+  namespace: mcp
+spec:
+  mcp:
+    targets:
+    - name: github-mcp-target
+      static:
+        host: github-mcp-server.mcp.svc.cluster.local
+        path: /mcp
+        port: 3000
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: github-mcp-route
+  namespace: mcp
+spec:
+  parentRefs:
+  - name: agentgateway
+  rules:
+  - backendRefs:
+    - name: github-mcp-backend
+      group: agentgateway.dev
+      kind: AgentgatewayBackend
+---
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: github-mcp-policy
+  namespace: mcp
+spec:
+  targetRefs:
+  - group: agentgateway.dev
+    kind: AgentgatewayBackend
+    name: github-mcp-backend
+  backend:
+    mcp:
+      authorization:
+        action: Allow
+        policy:
+          matchExpressions:
+          - 'mcp.tool.name in ["search_code", "get_file_contents", "pull_request_read",
+             "create_or_update_file", "create_branch", "list_pull_requests", "create_pull_request"]'
