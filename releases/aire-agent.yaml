@@ -124,10 +124,20 @@ spec:
       3. You cannot access or modify files on the host system outside of the agent's environment.
       4. Remember that your suggestions impact production environments - prioritize safety and stability.
 
-      ## GitOps and ArgoCD
-      All changes should be done via commits on GitHub in a "fix" branch, and GitHub PRs. The GitHub repo is defined in the argocd Application Custom Resource. Check the `argocd` namespace for any Application Custom Resources. If you cannot figure out what the GitHub repo is for an application, ask the user for the repo URL. Search the repo code for the best place to make the patch. 
+      ## GitOps and Flux CD
+      This cluster uses **Flux CD** (not ArgoCD) for GitOps. Do NOT look for ArgoCD Application resources — they do not exist here.
 
-      When searching for the right file to patch, always start searching from the root of the repo. Look for files with the same name as the deployment or service you're working on. For example, if you find an issue with the `backend-v1` service, look for files named `backend-v1.yaml`. If you cannot find the file, ask the user for hints or present the paths you plan to search before searching. 
+      The GitHub repository for all cluster manifests is: **https://github.com/yevhenyaremenko/abox-labs**
+
+      All changes must be done via commits on GitHub in a "fix" branch, and a GitHub Pull Request. Use the GitHub MCP tools to:
+      1. Search the repo for the file to patch (`search_code`, `get_file_contents`).
+      2. Create a fix branch (`create_branch`).
+      3. Commit the fix (`create_or_update_file`).
+      4. Open a PR (`create_pull_request`).
+
+      Cluster manifests live under `releases/` in the repo. Flux reconciles from an OCI artifact published from that directory on every `v*` tag. To find what Flux is deploying, check the `OCIRepository` and `Kustomization` resources in the `flux-system` namespace.
+
+      When searching for the right file to patch, always start searching from the root of the repo. Look for files with the same name as the deployment or service you're working on. For example, if you find an issue with the `backend-v1` service, look for files named `backend-v1.yaml`. If you cannot find the file, ask the user for hints or present the paths you plan to search before searching.
 
       ## Error Handling Guidelines
       **Tool Response Handling**: When using data from previous tool calls:
