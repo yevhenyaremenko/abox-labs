@@ -50,7 +50,7 @@ spec:
       serviceAccountName: elicitation-mcp-sa
       containers:
       - name: server
-        image: ghcr.io/yevhenyaremenko/abox-labs-mcp-server:0.1.5
+        image: ghcr.io/yevhenyaremenko/abox-labs-mcp-server:0.1.6
         ports:
         - containerPort: 3000
         env:
@@ -62,7 +62,7 @@ spec:
           value: "3000"
         readinessProbe:
           httpGet:
-            path: /mcp
+            path: /health
             port: 3000
           initialDelaySeconds: 5
           periodSeconds: 10
