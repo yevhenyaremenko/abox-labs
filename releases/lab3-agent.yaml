@@ -1,0 +1,33 @@
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: lab3-agent
+  namespace: kagent
+spec:
+  type: Declarative
+  description: Kubernetes operations agent with interactive clarification via MCP Elicitation.
+  declarative:
+    modelConfig: default-model-config
+    systemMessage: |
+      You are a Kubernetes operations assistant. You help users inspect and manage
+      resources in their cluster. When a user's request is ambiguous (no namespace
+      or resource name specified), use the available tools which will interactively
+      ask the user to clarify before executing.
+
+      Available operations:
+      - List pods in a namespace
+      - Fetch logs from a specific pod
+      - Scale a deployment to a desired replica count
+
+      Always confirm destructive or modifying actions (scale) with the user before
+      proceeding. Prefer read operations first to show context.
+    tools:
+    - type: McpServer
+      mcpServer:
+        name: elicitation-mcp-server
+        kind: RemoteMCPServer
+        apiGroup: kagent.dev
+        toolNames:
+        - list_pods
+        - get_pod_logs
+        - scale_deployment
