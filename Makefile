@@ -3,6 +3,12 @@ RED   := \033[0;31m
 CYAN  := \033[0;36m
 NC    := \033[0m
 
+# Positional argument support: make a2a-agent-card [agent-name]
+ifeq (a2a-agent-card,$(firstword $(MAKECMDGOALS)))
+  _A2A_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  $(eval $(_A2A_ARGS):;@:)
+endif
+
 .PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway a2a-agent-card inventory-agents inventory-servers governance-score governance-servers governance-ui qdrant-info qdrant-collections
 
 help:
@@ -18,7 +24,9 @@ help:
 	@echo "  test-openai                  - Run all OpenAI checks (direct + via agentgateway)"
 	@echo "  test-openai-direct           - Curl OpenAI API directly (requires OPENAI_API_KEY)"
 	@echo "  test-openai-via-agentgateway - Curl OpenAI via agentgateway (port-forward auto)"
-	@echo "  a2a-agent-card               - Fetch aire-agent Agent Card via Well-Known URI (A2A, port-forward auto)"
+	@echo "  a2a-agent-card [agent]       - Fetch Agent Card(s) via Well-Known URI (A2A, port-forward auto)"
+	@echo "                                 no arg: fetches aire-agent, github-agent, conductor-agent"
+	@echo "                                 agent: fetch a single card, e.g. make a2a-agent-card github-agent"
 	@echo "  inventory-agents             - List AI agents discovered by agentregistry-inventory (port-forward auto)"
 	@echo "  inventory-servers            - List MCP servers discovered by agentregistry-inventory (port-forward auto)"
 	@echo "  governance-score             - Fetch MCPG overall governance score (port-forward auto)"
@@ -147,23 +155,31 @@ test-openai-via-agentgateway:
 	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
 
 a2a-agent-card:
-	@set -e; \
+	@if [ -z "$(_A2A_ARGS)" ]; then \
+	  AGENTS="aire-agent github-agent conductor-agent"; \
+	else \
+	  AGENTS="$(_A2A_ARGS)"; \
+	fi; \
 	kubectl port-forward svc/kagent-controller 8083:8083 -n kagent >/dev/null 2>&1 & \
 	PF_PID=$$!; \
 	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
 	sleep 2; \
-	RESP=$$(curl -sS http://localhost:8083/api/a2a/kagent/aire-agent/.well-known/agent.json \
-	  -w '\nHTTP_STATUS:%{http_code}'); \
-	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
-	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
-	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
-	  printf '$(GREEN)[PASS]$(NC) a2a-agent-card (HTTP %s)\n' "$$STATUS"; \
-	else \
-	  printf '$(RED)[FAIL]$(NC) a2a-agent-card (HTTP %s)\n' "$$STATUS"; \
-	fi; \
-	printf '$(CYAN)Agent Card:$(NC)\n'; \
-	printf '%s\n' "$$BODY" | jq --sort-keys .; \
-	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
+	OVERALL=0; \
+	for agent in $$AGENTS; do \
+	  RESP=$$(curl -sS "http://localhost:8083/api/a2a/kagent/$$agent/.well-known/agent.json" \
+	    -w '\nHTTP_STATUS:%{http_code}'); \
+	  STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	  BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	  if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
+	    printf "$(GREEN)[PASS]$(NC) $$agent (HTTP %s)\n" "$$STATUS"; \
+	  else \
+	    printf "$(RED)[FAIL]$(NC) $$agent (HTTP %s)\n" "$$STATUS"; \
+	    OVERALL=1; \
+	  fi; \
+	  printf "$(CYAN)Agent Card [$$agent]:$(NC)\n"; \
+	  printf '%s\n' "$$BODY" | jq --sort-keys .; \
+	done; \
+	exit $$OVERALL
 
 inventory-agents:
 	@set -e; \

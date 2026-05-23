@@ -5,3 +5,4 @@ resources:
   - ../elicitation-mcp.yaml
   - ../elicitation-remote-mcp.yaml
   - ../lab3-agent.yaml
+  - ../sample-app.yaml
