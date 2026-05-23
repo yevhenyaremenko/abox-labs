@@ -9,7 +9,6 @@ resources:
   - remote-agw-mcp.yaml
   - aire-agent.yaml
   - github-agent.yaml
-  - conductor-agent.yaml
   - agentregistry.yaml
   - mcp-governance.yaml
   - qdrant.yaml
