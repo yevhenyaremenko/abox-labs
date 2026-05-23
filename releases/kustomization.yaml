@@ -12,3 +12,4 @@ resources:
   - agentregistry.yaml
   - mcp-governance.yaml
   - qdrant.yaml
+  - sample-app.yaml
