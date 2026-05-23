@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mcp-governance
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: mcp-governance
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/techwithhuz/charts/mcp-governance
+  ref:
+    tag: "0.22.2"
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: mcp-governance
+  namespace: mcp-governance
+spec:
+  interval: 1h
+  releaseName: mcp-governance
+  chartRef:
+    kind: OCIRepository
+    name: mcp-governance
+    namespace: flux-system
+  install:
+    crds: Create
+  upgrade:
+    crds: CreateReplace
+  values:
+    createNamespace: false
+
+    controller:
+      image:
+        repository: ghcr.io/techwithhuz/mcp-governance-controller
+        tag: "0.22.2"
+        pullPolicy: IfNotPresent
+
+    dashboard:
+      image:
+        repository: ghcr.io/techwithhuz/mcp-governance-dashboard
+        tag: "0.22.2"
+        pullPolicy: IfNotPresent
+      service:
+        type: ClusterIP
+        nodePort: null
+
+    # Install MCPGovernancePolicy + GovernanceEvaluation sample resources
+    samples:
+      install: true
+
+    governancePolicy:
+      spec:
+        requireAgentGateway: true
+        requireJWTAuth: true
+        requireRBAC: true
+        requireCORS: true
+        requireTLS: true
+        requirePromptGuard: true
+        requireRateLimit: true
+        maxToolsWarning: 10
+        maxToolsCritical: 15
+        # Scan all namespaces except system/infra ones
+        targetNamespaces: []
+        excludeNamespaces:
+          - kube-system
+          - kube-public
+          - kube-node-lease
+          - local-path-storage
+          - flux-system
+          - agentregistry
+          - mcp-governance
+        # AI scoring disabled — no Gemini key configured
+        aiAgent:
+          enabled: false

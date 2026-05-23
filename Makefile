@@ -3,7 +3,7 @@ RED   := \033[0;31m
 CYAN  := \033[0;36m
 NC    := \033[0m
 
-.PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway a2a-agent-card inventory-agents inventory-servers
+.PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway a2a-agent-card inventory-agents inventory-servers governance-score governance-servers governance-ui
 
 help:
 	@echo "Available targets:"
@@ -21,6 +21,9 @@ help:
 	@echo "  a2a-agent-card               - Fetch aire-agent Agent Card via Well-Known URI (A2A, port-forward auto)"
 	@echo "  inventory-agents             - List AI agents discovered by agentregistry-inventory (port-forward auto)"
 	@echo "  inventory-servers            - List MCP servers discovered by agentregistry-inventory (port-forward auto)"
+	@echo "  governance-score             - Fetch MCPG overall governance score (port-forward auto)"
+	@echo "  governance-servers           - Fetch MCPG per-MCP-server security findings (port-forward auto)"
+	@echo "  governance-ui                - Open MCPG dashboard in browser (port-forward auto)"
 
 run: check-env
 	@bash scripts/setup.sh
@@ -194,3 +197,43 @@ inventory-servers:
 	fi; \
 	printf '$(CYAN)MCP Servers:$(NC)\n%s\n' "$$BODY"; \
 	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
+
+governance-score:
+	@set -e; \
+	kubectl port-forward svc/mcp-governance-controller 8090:8090 -n mcp-governance >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS http://localhost:8090/api/governance/score \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) governance-score (HTTP %s)\n' "$$STATUS"; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) governance-score (HTTP %s)\n' "$$STATUS"; \
+	fi; \
+	printf '$(CYAN)Governance Score:$(NC)\n%s\n' "$$BODY"; \
+	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
+
+governance-servers:
+	@set -e; \
+	kubectl port-forward svc/mcp-governance-controller 8090:8090 -n mcp-governance >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS http://localhost:8090/api/governance/mcp-servers \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) governance-servers (HTTP %s)\n' "$$STATUS"; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) governance-servers (HTTP %s)\n' "$$STATUS"; \
+	fi; \
+	printf '$(CYAN)MCP Server Findings:$(NC)\n%s\n' "$$BODY"; \
+	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
+
+governance-ui:
+	@echo "Port-forwarding MCPG dashboard to http://localhost:3000 — press Ctrl+C to stop"; \
+	kubectl port-forward svc/mcp-governance-dashboard 3000:3000 -n mcp-governance
