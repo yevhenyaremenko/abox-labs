@@ -55,6 +55,33 @@ resource "kubectl_manifest" "rsip" {
 }
 
 # ==========================================
+# Bootstrap agentregistry post-install Kustomization
+# Applies CRD-dependent resources (DiscoveryConfig) only after
+# the agentregistry HelmRelease has installed its CRDs via `releases`.
+# ==========================================
+resource "kubectl_manifest" "agentregistry_post" {
+  depends_on = [kubectl_manifest.rset]
+
+  yaml_body = <<-YAML
+    apiVersion: kustomize.toolkit.fluxcd.io/v1
+    kind: Kustomization
+    metadata:
+      name: releases-agentregistry-post
+      namespace: flux-system
+    spec:
+      interval: 2m
+      dependsOn:
+        - name: releases
+      sourceRef:
+        kind: OCIRepository
+        name: releases
+      path: ./agentregistry-post
+      prune: true
+      retryInterval: 30s
+  YAML
+}
+
+# ==========================================
 # Bootstrap Lab 3 Kustomization (optional)
 # ==========================================
 resource "kubectl_manifest" "lab3" {

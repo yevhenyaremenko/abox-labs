@@ -35,20 +35,3 @@ spec:
     crds: CreateReplace
   values:
     disableAuth: true
----
-# DiscoveryConfig — scan kagent and mcp namespaces for AI resources
-# (agents, remotemcpservers, mcpservers, modelconfigs from kagent.dev API group)
-apiVersion: agentregistry.dev/v1alpha1
-kind: DiscoveryConfig
-metadata:
-  name: abox
-  namespace: agentregistry
-spec:
-  environments:
-  - name: abox
-    cluster:
-      name: local
-    namespaces:
-    - kagent
-    - mcp
-    discoveryEnabled: true
