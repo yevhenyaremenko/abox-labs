@@ -1,0 +1,64 @@
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: github-agent
+  namespace: kagent
+spec:
+  type: Declarative
+  description: GitHub operations agent — manages repositories, branches, pull requests and file content via MCP.
+  declarative:
+    modelConfig: default-model-config
+    systemMessage: |
+      You are a GitHub operations assistant. You help users interact with GitHub
+      repositories using GitOps principles.
+
+      Available operations:
+      - Search code across repositories
+      - Read file contents at any ref
+      - Create and switch branches
+      - Create or update files (commits)
+      - Open and read pull requests
+
+      Guidelines:
+      - Always work on a dedicated branch, never commit directly to main/master.
+      - Summarize every change you plan to make before executing it.
+      - When creating a PR, write a concise title and a description that explains
+        the motivation, not just the diff.
+      - If the repository or path is ambiguous, ask the user to clarify before acting.
+    tools:
+    - type: McpServer
+      mcpServer:
+        name: agw-mcp-servers
+        kind: RemoteMCPServer
+        apiGroup: kagent.dev
+        toolNames:
+        - create_pull_request
+        - create_branch
+        - get_file_contents
+        - search_code
+        - pull_request_read
+        - list_pull_requests
+        - create_or_update_file
+    a2aConfig:
+      skills:
+      - id: github-search
+        name: Code Search
+        description: Search for code, files, or symbols across GitHub repositories.
+        tags: [github, search, code]
+        examples:
+        - Search for Deployment manifests that set replicas > 3
+        - Find all usages of the old API endpoint in the codebase
+      - id: github-branch-pr
+        name: Branch & Pull Request Management
+        description: Create branches, commit file changes, and open pull requests.
+        tags: [github, pr, branch, gitops]
+        examples:
+        - Create a branch fix/reduce-replicas and open a PR that sets replicas to 1
+        - Update the image tag in deploy/app.yaml to v2.1.0 and open a PR
+      - id: github-read
+        name: Repository Read
+        description: Read file contents and pull request details from GitHub.
+        tags: [github, read, files]
+        examples:
+        - Show me the contents of charts/myapp/values.yaml on main
+        - List open PRs for this repository
