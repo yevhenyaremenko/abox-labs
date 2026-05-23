@@ -3,7 +3,7 @@ RED   := \033[0;31m
 CYAN  := \033[0;36m
 NC    := \033[0m
 
-.PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway
+.PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway a2a-agent-card inventory-agents inventory-servers
 
 help:
 	@echo "Available targets:"
@@ -18,6 +18,9 @@ help:
 	@echo "  test-openai                  - Run all OpenAI checks (direct + via agentgateway)"
 	@echo "  test-openai-direct           - Curl OpenAI API directly (requires OPENAI_API_KEY)"
 	@echo "  test-openai-via-agentgateway - Curl OpenAI via agentgateway (port-forward auto)"
+	@echo "  a2a-agent-card               - Fetch aire-agent Agent Card via Well-Known URI (A2A, port-forward auto)"
+	@echo "  inventory-agents             - List AI agents discovered by agentregistry-inventory (port-forward auto)"
+	@echo "  inventory-servers            - List MCP servers discovered by agentregistry-inventory (port-forward auto)"
 
 run: check-env
 	@bash scripts/setup.sh
@@ -136,4 +139,58 @@ test-openai-via-agentgateway:
 	  printf '$(RED)[FAIL]$(NC) openai-via-agentgateway (HTTP %s)\n' "$$STATUS"; \
 	fi; \
 	printf '$(CYAN)Response:$(NC) %s\n' "$$BODY"; \
+	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
+
+a2a-agent-card:
+	@set -e; \
+	kubectl port-forward svc/kagent-controller 8083:8083 -n kagent >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS http://localhost:8083/api/a2a/kagent/aire-agent/.well-known/agent.json \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) a2a-agent-card (HTTP %s)\n' "$$STATUS"; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) a2a-agent-card (HTTP %s)\n' "$$STATUS"; \
+	fi; \
+	printf '$(CYAN)Agent Card:$(NC)\n%s\n' "$$BODY"; \
+	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
+
+inventory-agents:
+	@set -e; \
+	kubectl port-forward svc/agentregistry-api 8080:8080 -n agentregistry >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS http://localhost:8080/v0/agents \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) inventory-agents (HTTP %s)\n' "$$STATUS"; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) inventory-agents (HTTP %s)\n' "$$STATUS"; \
+	fi; \
+	printf '$(CYAN)Agents:$(NC)\n%s\n' "$$BODY"; \
+	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
+
+inventory-servers:
+	@set -e; \
+	kubectl port-forward svc/agentregistry-api 8080:8080 -n agentregistry >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS http://localhost:8080/v0/servers \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) inventory-servers (HTTP %s)\n' "$$STATUS"; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) inventory-servers (HTTP %s)\n' "$$STATUS"; \
+	fi; \
+	printf '$(CYAN)MCP Servers:$(NC)\n%s\n' "$$BODY"; \
 	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]

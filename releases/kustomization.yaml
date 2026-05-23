@@ -8,3 +8,4 @@ resources:
   - mcp-agentgateway.yaml
   - remote-agw-mcp.yaml
   - aire-agent.yaml
+  - agentregistry.yaml
