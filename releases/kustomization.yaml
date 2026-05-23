@@ -10,3 +10,4 @@ resources:
   - aire-agent.yaml
   - agentregistry.yaml
   - mcp-governance.yaml
+  - qdrant.yaml

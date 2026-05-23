@@ -3,7 +3,7 @@ RED   := \033[0;31m
 CYAN  := \033[0;36m
 NC    := \033[0m
 
-.PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway a2a-agent-card inventory-agents inventory-servers governance-score governance-servers governance-ui
+.PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway a2a-agent-card inventory-agents inventory-servers governance-score governance-servers governance-ui qdrant-info qdrant-collections
 
 help:
 	@echo "Available targets:"
@@ -24,6 +24,8 @@ help:
 	@echo "  governance-score             - Fetch MCPG overall governance score (port-forward auto)"
 	@echo "  governance-servers           - Fetch MCPG per-MCP-server security findings (port-forward auto)"
 	@echo "  governance-ui                - Open MCPG dashboard in browser (port-forward auto)"
+	@echo "  qdrant-info                  - Show Qdrant cluster info (port-forward auto)"
+	@echo "  qdrant-collections           - List Qdrant collections (port-forward auto)"
 
 run: check-env
 	@bash scripts/setup.sh
@@ -240,3 +242,41 @@ governance-servers:
 governance-ui:
 	@echo "Port-forwarding MCPG dashboard to http://localhost:3000 — press Ctrl+C to stop"; \
 	kubectl port-forward svc/mcp-governance-dashboard 3000:3000 -n mcp-governance
+
+qdrant-info:
+	@set -e; \
+	kubectl port-forward svc/qdrant 6333:6333 -n qdrant >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS http://localhost:6333 \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) qdrant-info (HTTP %s)\n' "$$STATUS"; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) qdrant-info (HTTP %s)\n' "$$STATUS"; \
+	fi; \
+	printf '$(CYAN)Qdrant Info:$(NC)\n'; \
+	printf '%s\n' "$$BODY" | jq --sort-keys .; \
+	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
+
+qdrant-collections:
+	@set -e; \
+	kubectl port-forward svc/qdrant 6333:6333 -n qdrant >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS http://localhost:6333/collections \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) qdrant-collections (HTTP %s)\n' "$$STATUS"; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) qdrant-collections (HTTP %s)\n' "$$STATUS"; \
+	fi; \
+	printf '$(CYAN)Collections:$(NC)\n'; \
+	printf '%s\n' "$$BODY" | jq --sort-keys .; \
+	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
