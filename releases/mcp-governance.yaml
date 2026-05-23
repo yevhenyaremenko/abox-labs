@@ -48,9 +48,10 @@ spec:
         type: ClusterIP
         nodePort: null
 
-    # Install MCPGovernancePolicy + GovernanceEvaluation sample resources
+    # Samples disabled — chart's sample MCPGovernancePolicy references .spec.severityPenalties
+    # which is not declared in the CRD schema for this chart version (0.22.2)
     samples:
-      install: true
+      install: false
 
     governancePolicy:
       spec:
