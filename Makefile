@@ -159,7 +159,8 @@ a2a-agent-card:
 	else \
 	  printf '$(RED)[FAIL]$(NC) a2a-agent-card (HTTP %s)\n' "$$STATUS"; \
 	fi; \
-	printf '$(CYAN)Agent Card:$(NC)\n%s\n' "$$BODY"; \
+	printf '$(CYAN)Agent Card:$(NC)\n'; \
+	printf '%s\n' "$$BODY" | jq --sort-keys .; \
 	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
 
 inventory-agents:
@@ -213,7 +214,8 @@ governance-score:
 	else \
 	  printf '$(RED)[FAIL]$(NC) governance-score (HTTP %s)\n' "$$STATUS"; \
 	fi; \
-	printf '$(CYAN)Governance Score:$(NC)\n%s\n' "$$BODY"; \
+	printf '$(CYAN)Governance Score:$(NC)\n'; \
+	printf '%s\n' "$$BODY" | jq --sort-keys .; \
 	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
 
 governance-servers:
@@ -231,7 +233,8 @@ governance-servers:
 	else \
 	  printf '$(RED)[FAIL]$(NC) governance-servers (HTTP %s)\n' "$$STATUS"; \
 	fi; \
-	printf '$(CYAN)MCP Server Findings:$(NC)\n%s\n' "$$BODY"; \
+	printf '$(CYAN)MCP Server Findings:$(NC)\n'; \
+	printf '%s\n' "$$BODY" | jq --sort-keys .; \
 	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
 
 governance-ui:
