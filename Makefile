@@ -196,7 +196,8 @@ inventory-agents:
 	else \
 	  printf '$(RED)[FAIL]$(NC) inventory-agents (HTTP %s)\n' "$$STATUS"; \
 	fi; \
-	printf '$(CYAN)Agents:$(NC)\n%s\n' "$$BODY"; \
+	printf '$(CYAN)Agents:$(NC)\n'; \
+	printf '%s\n' "$$BODY" | jq --sort-keys .; \
 	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
 
 inventory-servers:
@@ -214,7 +215,8 @@ inventory-servers:
 	else \
 	  printf '$(RED)[FAIL]$(NC) inventory-servers (HTTP %s)\n' "$$STATUS"; \
 	fi; \
-	printf '$(CYAN)MCP Servers:$(NC)\n%s\n' "$$BODY"; \
+	printf '$(CYAN)MCP Servers:$(NC)\n'; \
+	printf '%s\n' "$$BODY" | jq --sort-keys .; \
 	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
 
 governance-score:
