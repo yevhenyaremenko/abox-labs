@@ -55,6 +55,32 @@ resource "kubectl_manifest" "rsip" {
 }
 
 # ==========================================
+# Bootstrap Lab 3 Kustomization (optional)
+# ==========================================
+resource "kubectl_manifest" "lab3" {
+  count      = var.enable_lab3_resources ? 1 : 0
+  depends_on = [kubectl_manifest.rset]
+
+  yaml_body = <<-YAML
+    apiVersion: kustomize.toolkit.fluxcd.io/v1
+    kind: Kustomization
+    metadata:
+      name: releases-lab3
+      namespace: flux-system
+    spec:
+      interval: 2m
+      dependsOn:
+        - name: releases
+      sourceRef:
+        kind: OCIRepository
+        name: releases
+      path: ./lab3
+      prune: true
+      retryInterval: 30s
+  YAML
+}
+
+# ==========================================
 # Bootstrap Flux ResourceSet
 # ==========================================
 resource "kubectl_manifest" "rset" {
