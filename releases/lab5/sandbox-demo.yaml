@@ -34,7 +34,7 @@ spec:
         env:
         # OpenTelemetry — send traces and metrics to Arize Phoenix
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "http://phoenix.phoenix.svc.cluster.local:6006"
+          value: "http://phoenix-svc.phoenix.svc.cluster.local:6006"
         - name: OTEL_EXPORTER_OTLP_PROTOCOL
           value: "http/protobuf"
         - name: OTEL_SERVICE_NAME
