@@ -400,7 +400,7 @@ apikey-test-auth:
 	sleep 2; \
 	RESP=$$(curl -sS $(_AGW_URL) \
 	  -H 'Content-Type: application/json' \
-	  -H 'Authorization: $(_AGW_APIKEY)' \
+	  -H 'Authorization: Bearer $(_AGW_APIKEY)' \
 	  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"Say hello"}]}' \
 	  -w '\nHTTP_STATUS:%{http_code}'); \
 	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
@@ -421,7 +421,7 @@ guardrails-test-block:
 	sleep 2; \
 	RESP=$$(curl -sS $(_AGW_URL) \
 	  -H 'Content-Type: application/json' \
-	  -H 'Authorization: $(_AGW_APIKEY)' \
+	  -H 'Authorization: Bearer $(_AGW_APIKEY)' \
 	  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"Please block this request"}]}' \
 	  -w '\nHTTP_STATUS:%{http_code}'); \
 	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
@@ -442,7 +442,7 @@ guardrails-test-mask:
 	sleep 2; \
 	RESP=$$(curl -sS $(_AGW_URL) \
 	  -H 'Content-Type: application/json' \
-	  -H 'Authorization: $(_AGW_APIKEY)' \
+	  -H 'Authorization: Bearer $(_AGW_APIKEY)' \
 	  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"mask my secret token abc123"}]}' \
 	  -w '\nHTTP_STATUS:%{http_code}'); \
 	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
@@ -459,7 +459,7 @@ guardrails-test-pass:
 	sleep 2; \
 	RESP=$$(curl -sS $(_AGW_URL) \
 	  -H 'Content-Type: application/json' \
-	  -H 'Authorization: $(_AGW_APIKEY)' \
+	  -H 'Authorization: Bearer $(_AGW_APIKEY)' \
 	  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"What is 2+2?"}]}' \
 	  -w '\nHTTP_STATUS:%{http_code}'); \
 	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
