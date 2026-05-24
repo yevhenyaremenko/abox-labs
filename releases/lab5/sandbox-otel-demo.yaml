@@ -88,10 +88,27 @@ data:
     # Manual spans (start_as_current_span) are used instead for each operation.
     # ─────────────────────────────────────────────────────────────────────────
 
-    from kubernetes import client, config
+    from kubernetes import client
 
-    config.load_incluster_config()
-    sandbox_api = client.CustomObjectsApi()
+    # Build the k8s client configuration manually instead of load_incluster_config().
+    # load_incluster_config() sets the token via api_key dict, but the kubernetes
+    # Python client's auth pipeline silently drops it in some environments.
+    # Reading the token directly and passing it via api_key_prefix is reliable
+    # (matches how the raw urllib3 debug test authenticated successfully).
+    _token = open("/var/run/secrets/kubernetes.io/serviceaccount/token").read().strip()
+    _k8s_host = (
+        f"https://{os.environ['KUBERNETES_SERVICE_HOST']}"
+        f":{os.environ['KUBERNETES_SERVICE_PORT_HTTPS']}"
+    )
+    _k8s_cfg = client.Configuration()
+    _k8s_cfg.host = _k8s_host
+    _k8s_cfg.ssl_ca_cert = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+    _k8s_cfg.verify_ssl = True
+    _k8s_cfg.api_key        = {"authorization": _token}
+    _k8s_cfg.api_key_prefix = {"authorization": "Bearer"}
+
+    _api_client = client.ApiClient(configuration=_k8s_cfg)
+    sandbox_api = client.CustomObjectsApi(api_client=_api_client)
 
     NAMESPACE    = "sandboxes"
     SANDBOX_NAME = "otel-demo-sandbox"
