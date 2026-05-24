@@ -25,37 +25,40 @@ metadata:
   name: python-agent
   namespace: sandboxes
 spec:
-  sandboxSpec:
-    podTemplate:
-      spec:
-        containers:
-        - name: agent
-          image: python:3.12-slim
-          command: ["sleep", "infinity"]
-          env:
-          # OpenTelemetry — send traces and metrics to Arize Phoenix
-          - name: OTEL_EXPORTER_OTLP_ENDPOINT
-            value: "http://phoenix.phoenix.svc.cluster.local:6006"
-          - name: OTEL_EXPORTER_OTLP_PROTOCOL
-            value: "http/protobuf"
-          - name: OTEL_SERVICE_NAME
-            value: "agent-sandbox-demo"
-          - name: OTEL_TRACES_EXPORTER
-            value: "otlp"
-          - name: OTEL_METRICS_EXPORTER
-            value: "otlp"
-          resources:
-            requests:
-              cpu: 50m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
-        restartPolicy: Always
-    storage:
-      volumes:
-      - name: agent-home
-        size: 2Gi
+  podTemplate:
+    spec:
+      containers:
+      - name: agent
+        image: python:3.12-slim
+        command: ["sleep", "infinity"]
+        env:
+        # OpenTelemetry — send traces and metrics to Arize Phoenix
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://phoenix.phoenix.svc.cluster.local:6006"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "http/protobuf"
+        - name: OTEL_SERVICE_NAME
+          value: "agent-sandbox-demo"
+        - name: OTEL_TRACES_EXPORTER
+          value: "otlp"
+        - name: OTEL_METRICS_EXPORTER
+          value: "otlp"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      restartPolicy: Always
+  volumeClaimTemplates:
+  - metadata:
+      name: agent-home
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 2Gi
 
 ---
 
@@ -67,6 +70,5 @@ metadata:
   name: demo-agent-claim
   namespace: sandboxes
 spec:
-  templateRef:
+  sandboxTemplateRef:
     name: python-agent
-    namespace: sandboxes
