@@ -346,7 +346,7 @@ sandbox-demo-clean:
 
 phoenix-ui:
 	@echo "Port-forwarding Arize Phoenix UI to http://localhost:6006 — press Ctrl+C to stop"
-	@kubectl port-forward svc/phoenix 6006:6006 -n phoenix
+	@kubectl port-forward svc/phoenix-svc 6006:6006 -n phoenix
 
 phoenix-otel-demo:
 	@echo "$(CYAN)Triggering OTEL sandbox demo Job (traces → Phoenix)...$(NC)"
