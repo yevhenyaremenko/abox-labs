@@ -15,3 +15,5 @@ resources:
   - sample-app.yaml
   - agent-sandbox.yaml
   - phoenix.yaml
+  - apikey-auth.yaml
+  - guardrails.yaml

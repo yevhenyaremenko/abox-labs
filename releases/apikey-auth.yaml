@@ -1,0 +1,47 @@
+# Agentgateway API Key Authentication
+# Docs: https://agentgateway.dev/docs/kubernetes/latest/security/apikey/
+#
+# Protects the agentgateway-external Gateway with a mandatory API key.
+# Clients must include the key in the Authorization header:
+#   Authorization: <api-key-value>
+#
+# Test (no key → 401):
+#   make apikey-test-unauth
+# Test (valid key → 200):
+#   make apikey-test-auth
+---
+# API key stored as a Secret with the extauth.solo.io/apikey type.
+# The `api-key` field holds the raw key value (plaintext in stringData).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: abox-apikey
+  namespace: agentgateway-system
+  labels:
+    # Label used by secretSelector in the policy below
+    app: agentgateway-external
+type: extauth.solo.io/apikey
+stringData:
+  # Demo key — rotate before any external exposure
+  api-key: "abox-demo-api-key-2024"
+
+---
+# AgentgatewayPolicy — enforces API key authentication on all traffic
+# entering through the agentgateway-external Gateway (Strict mode).
+# Requests without a valid key receive 401 Unauthorized.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: apikey-auth
+  namespace: agentgateway-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: agentgateway-external
+  traffic:
+    apiKeyAuthentication:
+      mode: Strict
+      secretSelector:
+        matchLabels:
+          app: agentgateway-external
