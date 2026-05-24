@@ -55,6 +55,87 @@ resource "kubectl_manifest" "rsip" {
 }
 
 # ==========================================
+# Bootstrap conductor-agent post-install Kustomization
+# conductor-agent references github-agent as a tool via A2A.
+# The releases Kustomization has wait:true, so dependsOn:releases guarantees
+# github-agent is Accepted before conductor-agent is ever applied.
+# ==========================================
+resource "kubectl_manifest" "conductor_post" {
+  depends_on = [kubectl_manifest.rset]
+
+  yaml_body = <<-YAML
+    apiVersion: kustomize.toolkit.fluxcd.io/v1
+    kind: Kustomization
+    metadata:
+      name: releases-conductor-post
+      namespace: flux-system
+    spec:
+      interval: 2m
+      dependsOn:
+        - name: releases
+      sourceRef:
+        kind: OCIRepository
+        name: releases
+      path: ./conductor-post
+      prune: true
+      retryInterval: 30s
+  YAML
+}
+
+# ==========================================
+# Bootstrap agentregistry post-install Kustomization
+# Applies CRD-dependent resources (DiscoveryConfig) only after
+# the agentregistry HelmRelease has installed its CRDs via `releases`.
+# ==========================================
+resource "kubectl_manifest" "agentregistry_post" {
+  depends_on = [kubectl_manifest.rset]
+
+  yaml_body = <<-YAML
+    apiVersion: kustomize.toolkit.fluxcd.io/v1
+    kind: Kustomization
+    metadata:
+      name: releases-agentregistry-post
+      namespace: flux-system
+    spec:
+      interval: 2m
+      dependsOn:
+        - name: releases
+      sourceRef:
+        kind: OCIRepository
+        name: releases
+      path: ./agentregistry-post
+      prune: true
+      retryInterval: 30s
+  YAML
+}
+
+# ==========================================
+# Bootstrap Lab 3 Kustomization (optional)
+# ==========================================
+resource "kubectl_manifest" "lab3" {
+  count      = var.enable_lab3_resources ? 1 : 0
+  depends_on = [kubectl_manifest.rset]
+
+  yaml_body = <<-YAML
+    apiVersion: kustomize.toolkit.fluxcd.io/v1
+    kind: Kustomization
+    metadata:
+      name: releases-lab3
+      namespace: flux-system
+    spec:
+      interval: 2m
+      dependsOn:
+        - name: releases
+      sourceRef:
+        kind: OCIRepository
+        name: releases
+      path: ./lab3
+      prune: true
+      retryInterval: 30s
+  YAML
+}
+
+# ==========================================
 # Bootstrap Flux ResourceSet
 # ==========================================
 resource "kubectl_manifest" "rset" {

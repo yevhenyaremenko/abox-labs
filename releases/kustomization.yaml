@@ -8,6 +8,8 @@ resources:
   - mcp-agentgateway.yaml
   - remote-agw-mcp.yaml
   - aire-agent.yaml
-  - elicitation-mcp.yaml
-  - elicitation-remote-mcp.yaml
-  - lab3-agent.yaml
+  - github-agent.yaml
+  - agentregistry.yaml
+  - mcp-governance.yaml
+  - qdrant.yaml
+  - sample-app.yaml
