@@ -9,7 +9,7 @@ ifeq (a2a-agent-card,$(firstword $(MAKECMDGOALS)))
   $(eval $(_A2A_ARGS):;@:)
 endif
 
-.PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway a2a-agent-card inventory-agents inventory-servers governance-score governance-servers governance-ui qdrant-info qdrant-collections sandbox-status sandbox-list phoenix-ui phoenix-otel-demo sandbox-demo-run sandbox-demo-clean apikey-test-unauth apikey-test-auth guardrails-test-block guardrails-test-mask guardrails-test-pass
+.PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway a2a-agent-card inventory-agents inventory-servers governance-score governance-servers governance-ui qdrant-info qdrant-collections sandbox-status sandbox-list phoenix-ui phoenix-otel-demo sandbox-demo-run sandbox-demo-clean apikey-test-unauth apikey-test-auth guardrails-test-block guardrails-test-mask guardrails-test-pass nw-policy-demo-apply nw-policy-demo-status nw-policy-demo-clean
 
 help:
 	@echo "Available targets:"
@@ -42,6 +42,11 @@ help:
 	@echo "  sandbox-demo-clean           - Delete Lab 5 sandbox demo resources"
 	@echo "  phoenix-ui                   - Open Arize Phoenix UI in browser (port-forward :6006)"
 	@echo "  phoenix-otel-demo            - Trigger the OTEL sandbox demo Job (sends traces to Phoenix)"
+	@echo ""
+	@echo "Network-policy composition (KRO + Sandbox):"
+	@echo "  nw-policy-demo-apply         - Apply AgenticSandbox demo (Sandbox + Service + NetworkPolicy via KRO)"
+	@echo "  nw-policy-demo-status        - Show AgenticSandbox, Sandbox, Service, NetworkPolicy status"
+	@echo "  nw-policy-demo-clean         - Delete AgenticSandbox demo resources"
 	@echo ""
 	@echo "Additional tasks — Agentgateway security & guardrails:"
 	@echo "  apikey-test-unauth           - Call agentgateway without API key (expect 401)"
@@ -470,3 +475,37 @@ guardrails-test-pass:
 	  printf '$(RED)[FAIL]$(NC) Unexpected HTTP %s\n' "$$STATUS"; \
 	fi; \
 	printf '$(CYAN)Response:$(NC) %s\n' "$$BODY"
+
+# ── Network-policy demo (KRO + AgenticSandbox) ───────────────────────────────
+
+nw-policy-demo-apply:
+	@echo "$(CYAN)Applying AgenticSandbox demo (namespace: sandboxes-nw)...$(NC)"
+	kubectl apply -f releases/lab5/network-policies.yaml
+	@echo ""
+	@echo "$(CYAN)KRO will reconcile AgenticSandbox 'demo' into Sandbox + Service + NetworkPolicy.$(NC)"
+	@echo "Run 'make nw-policy-demo-status' to watch progress."
+
+nw-policy-demo-status:
+	@echo "$(CYAN)=== KRO ResourceGraphDefinition ===$(NC)"
+	kubectl get resourcegraphdefinition agentic-sandbox -n sandboxes-nw 2>/dev/null || echo "  (not found — KRO may still be installing)"
+	@echo ""
+	@echo "$(CYAN)=== AgenticSandbox instances ===$(NC)"
+	kubectl get agenticsandboxes -n sandboxes-nw 2>/dev/null || echo "  (CRD not yet registered by KRO)"
+	@echo ""
+	@echo "$(CYAN)=== Sandbox pods ===$(NC)"
+	kubectl get sandboxes -n sandboxes-nw 2>/dev/null || echo "  (none)"
+	kubectl get pods -n sandboxes-nw -l sandbox=demo 2>/dev/null || true
+	@echo ""
+	@echo "$(CYAN)=== Service ===$(NC)"
+	kubectl get svc -n sandboxes-nw 2>/dev/null || true
+	@echo ""
+	@echo "$(CYAN)=== NetworkPolicy ===$(NC)"
+	kubectl get networkpolicy -n sandboxes-nw 2>/dev/null || echo "  (none — networkPolicy.enabled may be false)"
+	kubectl describe networkpolicy allow-frontend-to-backend -n sandboxes-nw 2>/dev/null || true
+
+nw-policy-demo-clean:
+	@echo "$(CYAN)Deleting AgenticSandbox demo resources...$(NC)"
+	kubectl delete agenticsandbox demo -n sandboxes-nw 2>/dev/null || true
+	kubectl delete resourcegraphdefinition agentic-sandbox -n sandboxes-nw 2>/dev/null || true
+	kubectl delete namespace sandboxes-nw 2>/dev/null || true
+	@echo "$(GREEN)Done.$(NC)"

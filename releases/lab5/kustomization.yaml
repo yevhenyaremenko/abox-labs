@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
   - sandbox-demo.yaml
   - sandbox-otel-demo.yaml
+  - network-policies.yaml
 
 # Strategic-merge patch: adds OTEL env vars to the elicitation-mcp-server
 # deployment so it sends traces to Phoenix.
