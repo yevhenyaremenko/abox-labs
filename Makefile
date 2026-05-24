@@ -9,7 +9,7 @@ ifeq (a2a-agent-card,$(firstword $(MAKECMDGOALS)))
   $(eval $(_A2A_ARGS):;@:)
 endif
 
-.PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway a2a-agent-card inventory-agents inventory-servers governance-score governance-servers governance-ui qdrant-info qdrant-collections
+.PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway a2a-agent-card inventory-agents inventory-servers governance-score governance-servers governance-ui qdrant-info qdrant-collections sandbox-status sandbox-list phoenix-ui phoenix-otel-demo sandbox-demo-run sandbox-demo-clean
 
 help:
 	@echo "Available targets:"
@@ -34,6 +34,14 @@ help:
 	@echo "  governance-ui                - Open MCPG dashboard in browser (port-forward auto)"
 	@echo "  qdrant-info                  - Show Qdrant cluster info (port-forward auto)"
 	@echo "  qdrant-collections           - List Qdrant collections (port-forward auto)"
+	@echo ""
+	@echo "Lab 5 — Agent Sandbox + Phoenix Observability:"
+	@echo "  sandbox-status               - Show agent-sandbox controller health and CRD list"
+	@echo "  sandbox-list                 - List all Sandbox resources in the cluster"
+	@echo "  sandbox-demo-run             - Apply Lab 5 sandbox demo resources (SandboxTemplate, SandboxClaim)"
+	@echo "  sandbox-demo-clean           - Delete Lab 5 sandbox demo resources"
+	@echo "  phoenix-ui                   - Open Arize Phoenix UI in browser (port-forward :6006)"
+	@echo "  phoenix-otel-demo            - Trigger the OTEL sandbox demo Job (sends traces to Phoenix)"
 
 run: check-env
 	@bash scripts/setup.sh
@@ -298,3 +306,54 @@ qdrant-collections:
 	printf '$(CYAN)Collections:$(NC)\n'; \
 	printf '%s\n' "$$BODY" | jq --sort-keys .; \
 	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
+
+# =============================================================================
+# Lab 5 — Agent Sandbox + Arize Phoenix Observability
+# =============================================================================
+
+sandbox-status:
+	@echo "$(CYAN)=== Agent Sandbox Controller ===$(NC)"
+	@kubectl rollout status deployment/agent-sandbox-controller -n agent-sandbox-system 2>/dev/null \
+	  && printf '$(GREEN)[PASS]$(NC) agent-sandbox-controller is ready\n' \
+	  || printf '$(RED)[FAIL]$(NC) agent-sandbox-controller not ready (is agent-sandbox.yaml deployed?)\n'
+	@echo ""
+	@echo "$(CYAN)CRDs installed:$(NC)"
+	@kubectl get crds | grep -E 'agents.x-k8s.io|extensions.agents.x-k8s.io' || echo "  (none found)"
+
+sandbox-list:
+	@echo "$(CYAN)=== Sandboxes in all namespaces ===$(NC)"
+	@kubectl get sandboxes -A 2>/dev/null || echo "  (no sandboxes or CRD not installed)"
+	@echo ""
+	@echo "$(CYAN)=== SandboxClaims ===$(NC)"
+	@kubectl get sandboxclaims -A 2>/dev/null || echo "  (none)"
+	@echo ""
+	@echo "$(CYAN)=== SandboxTemplates ===$(NC)"
+	@kubectl get sandboxtemplates -A 2>/dev/null || echo "  (none)"
+
+sandbox-demo-run:
+	@echo "Applying Lab 5 sandbox demo resources..."
+	@kubectl apply -k releases/lab5/
+	@echo ""
+	@echo "$(CYAN)SandboxTemplate:$(NC)"
+	@kubectl get sandboxtemplate -n sandboxes 2>/dev/null || true
+	@echo "$(CYAN)SandboxClaim:$(NC)"
+	@kubectl get sandboxclaim -n sandboxes 2>/dev/null || true
+
+sandbox-demo-clean:
+	@echo "Deleting Lab 5 sandbox demo resources..."
+	@kubectl delete -k releases/lab5/ --ignore-not-found=true
+	@kubectl delete namespace sandboxes --ignore-not-found=true
+
+phoenix-ui:
+	@echo "Port-forwarding Arize Phoenix UI to http://localhost:6006 — press Ctrl+C to stop"
+	@kubectl port-forward svc/phoenix 6006:6006 -n phoenix
+
+phoenix-otel-demo:
+	@echo "$(CYAN)Triggering OTEL sandbox demo Job (traces → Phoenix)...$(NC)"
+	@kubectl delete job sandbox-otel-demo -n sandboxes --ignore-not-found=true >/dev/null 2>&1
+	@kubectl apply -f releases/lab5/sandbox-otel-demo.yaml
+	@echo ""
+	@echo "$(CYAN)Waiting for Job to complete (up to 3 min)...$(NC)"
+	@kubectl wait job/sandbox-otel-demo -n sandboxes --for=condition=complete --timeout=180s \
+	  && printf '$(GREEN)[PASS]$(NC) Demo Job completed — check Phoenix UI: make phoenix-ui\n' \
+	  || printf '$(RED)[FAIL]$(NC) Job did not complete in time. Check logs:\n  kubectl logs -n sandboxes -l job-name=sandbox-otel-demo\n'
