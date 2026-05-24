@@ -1,11 +1,9 @@
-# This deployment is intentionally broken: the readiness and liveness probes
-# point to /healthz which nginx does not serve, so the pod will never become
-# Ready. It is used as a lab target — the lab3-agent is expected to detect the
-# misconfigured probes and fix them automatically.
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: sample-app
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - service.yaml
+  - deployment.yaml
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -23,31 +21,17 @@ spec:
         app: sample-app
     spec:
       containers:
-      - name: nginx
-        image: nginx:1.27
-        ports:
-        - containerPort: 80
-        readinessProbe:
-          httpGet:
-            path: /healthz
-            port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 80
-          initialDelaySeconds: 10
-          periodSeconds: 15
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: sample-app
-  namespace: sample-app
-spec:
-  selector:
-    app: sample-app
-  ports:
-  - port: 80
-    targetPort: 80
+        - name: sample-app
+          image: sample-app:latest
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
