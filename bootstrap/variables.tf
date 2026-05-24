@@ -21,3 +21,9 @@ variable "enable_lab3_resources" {
   type        = bool
   default     = false
 }
+
+variable "enable_lab5_resources" {
+  description = "Deploy Lab 5 resources: Agent Sandbox demo (SandboxTemplate, SandboxClaim), OTEL telemetry demo Job, and MCP server Phoenix tracing patch. Requires agent-sandbox and phoenix from the base releases. Disabled by default."
+  type        = bool
+  default     = false
+}

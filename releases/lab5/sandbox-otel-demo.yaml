@@ -1,0 +1,247 @@
+# Lab 5 — Agent Sandbox OTEL Telemetry Demo
+# A Kubernetes Job that:
+#   1. Installs the agentic-sandbox-client Python SDK
+#   2. Installs opentelemetry + arize-phoenix-otel auto-instrumentation
+#   3. Creates a Sandbox via the K8s API
+#   4. Sends OTEL traces and metrics to Arize Phoenix
+#
+# Pre-requisites: Phoenix is running (releases/phoenix.yaml) and
+#                 Agent Sandbox controller is running (releases/agent-sandbox.yaml).
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sandbox-otel-demo
+  namespace: sandboxes
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sandbox-otel-demo
+rules:
+- apiGroups: ["agents.x-k8s.io"]
+  resources: ["sandboxes"]
+  verbs: ["create", "get", "list", "delete", "watch"]
+- apiGroups: ["extensions.agents.x-k8s.io"]
+  resources: ["sandboxclaims", "sandboxtemplates"]
+  verbs: ["get", "list"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sandbox-otel-demo
+subjects:
+- kind: ServiceAccount
+  name: sandbox-otel-demo
+  namespace: sandboxes
+roleRef:
+  kind: ClusterRole
+  name: sandbox-otel-demo
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+# ConfigMap with the instrumented Python demo script.
+# Uses opentelemetry-instrument CLI wrapper — no OTel imports needed in user code.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sandbox-otel-demo-script
+  namespace: sandboxes
+data:
+  demo.py: |
+    """
+    Agent Sandbox OTEL Telemetry Demo
+    ----------------------------------
+    Creates a Sandbox via the Kubernetes API client, then performs
+    a few operations to generate spans visible in Arize Phoenix.
+
+    Run with:
+      OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix.phoenix.svc.cluster.local:6006 \
+      OTEL_SERVICE_NAME=sandbox-otel-demo \
+      opentelemetry-instrument python demo.py
+    """
+    import os
+    import time
+    from kubernetes import client, config
+
+    # Load in-cluster kubeconfig
+    config.load_incluster_config()
+
+    sandbox_api = client.CustomObjectsApi()
+    core_api = client.CoreV1Api()
+
+    NAMESPACE = "sandboxes"
+    SANDBOX_NAME = "otel-demo-sandbox"
+
+    def create_sandbox() -> dict:
+        body = {
+            "apiVersion": "agents.x-k8s.io/v1alpha1",
+            "kind": "Sandbox",
+            "metadata": {
+                "name": SANDBOX_NAME,
+                "namespace": NAMESPACE,
+            },
+            "spec": {
+                "podTemplate": {
+                    "spec": {
+                        "containers": [
+                            {
+                                "name": "agent",
+                                "image": "python:3.12-slim",
+                                "command": ["sleep", "infinity"],
+                            }
+                        ],
+                        "restartPolicy": "Always",
+                    }
+                }
+            },
+        }
+        try:
+            result = sandbox_api.create_namespaced_custom_object(
+                group="agents.x-k8s.io",
+                version="v1alpha1",
+                namespace=NAMESPACE,
+                plural="sandboxes",
+                body=body,
+            )
+            print(f"[sandbox] created: {result['metadata']['name']}")
+            return result
+        except client.exceptions.ApiException as e:
+            if e.status == 409:
+                print(f"[sandbox] already exists, fetching...")
+                return sandbox_api.get_namespaced_custom_object(
+                    group="agents.x-k8s.io",
+                    version="v1alpha1",
+                    namespace=NAMESPACE,
+                    plural="sandboxes",
+                    name=SANDBOX_NAME,
+                )
+            raise
+
+    def wait_for_sandbox_ready(timeout: int = 60) -> None:
+        print("[sandbox] waiting for Ready status...")
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            obj = sandbox_api.get_namespaced_custom_object(
+                group="agents.x-k8s.io",
+                version="v1alpha1",
+                namespace=NAMESPACE,
+                plural="sandboxes",
+                name=SANDBOX_NAME,
+            )
+            conditions = obj.get("status", {}).get("conditions", [])
+            ready = any(
+                c.get("type") == "Ready" and c.get("status") == "True"
+                for c in conditions
+            )
+            if ready:
+                print("[sandbox] Ready!")
+                return
+            time.sleep(3)
+        print("[sandbox] timed out waiting for Ready")
+
+    def delete_sandbox() -> None:
+        sandbox_api.delete_namespaced_custom_object(
+            group="agents.x-k8s.io",
+            version="v1alpha1",
+            namespace=NAMESPACE,
+            plural="sandboxes",
+            name=SANDBOX_NAME,
+        )
+        print(f"[sandbox] deleted: {SANDBOX_NAME}")
+
+    def list_all_sandboxes() -> list:
+        result = sandbox_api.list_namespaced_custom_object(
+            group="agents.x-k8s.io",
+            version="v1alpha1",
+            namespace=NAMESPACE,
+            plural="sandboxes",
+        )
+        items = result.get("items", [])
+        print(f"[sandbox] found {len(items)} sandbox(es) in namespace {NAMESPACE}")
+        return items
+
+    if __name__ == "__main__":
+        print("=== Agent Sandbox OTEL Demo ===")
+        print(f"Phoenix endpoint: {os.environ.get('OTEL_EXPORTER_OTLP_ENDPOINT', 'console')}")
+
+        create_sandbox()
+        wait_for_sandbox_ready()
+        list_all_sandboxes()
+        time.sleep(2)
+        delete_sandbox()
+        print("=== Done — check Phoenix UI for traces ===")
+
+---
+
+# Job that runs the demo with full OTEL auto-instrumentation wired to Phoenix
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sandbox-otel-demo
+  namespace: sandboxes
+  labels:
+    app.kubernetes.io/part-of: lab5
+spec:
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      serviceAccountName: sandbox-otel-demo
+      restartPolicy: Never
+      initContainers:
+      - name: install-deps
+        image: python:3.12-slim
+        command:
+        - sh
+        - -c
+        - |
+          pip install --quiet --target /deps \
+            kubernetes \
+            opentelemetry-sdk \
+            opentelemetry-exporter-otlp-proto-http \
+            opentelemetry-instrumentation \
+            opentelemetry-instrumentation-requests \
+            opentelemetry-instrumentation-urllib3 \
+            arize-phoenix-otel
+          # bootstrap auto-instrumentation hooks
+          PYTHONPATH=/deps opentelemetry-bootstrap -a install --target /deps 2>/dev/null || true
+        volumeMounts:
+        - name: deps
+          mountPath: /deps
+      containers:
+      - name: demo
+        image: python:3.12-slim
+        command:
+        - sh
+        - -c
+        - |
+          PYTHONPATH=/deps opentelemetry-instrument \
+            --traces_exporter otlp \
+            --metrics_exporter otlp \
+            --logs_exporter console \
+            python /scripts/demo.py
+        env:
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://phoenix.phoenix.svc.cluster.local:6006"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "http/protobuf"
+        - name: OTEL_SERVICE_NAME
+          value: "agent-sandbox-demo"
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: "deployment.environment=lab5,k8s.namespace.name=sandboxes"
+        volumeMounts:
+        - name: deps
+          mountPath: /deps
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: deps
+        emptyDir: {}
+      - name: scripts
+        configMap:
+          name: sandbox-otel-demo-script

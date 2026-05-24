@@ -136,6 +136,35 @@ resource "kubectl_manifest" "lab3" {
 }
 
 # ==========================================
+# Bootstrap Lab 5 Kustomization (optional)
+# Deploys: Sandbox demo resources, OTEL telemetry demo Job,
+#          MCP server Phoenix tracing patch.
+# Depends on `releases` (agent-sandbox + phoenix must be up first).
+# ==========================================
+resource "kubectl_manifest" "lab5" {
+  count      = var.enable_lab5_resources ? 1 : 0
+  depends_on = [kubectl_manifest.rset]
+
+  yaml_body = <<-YAML
+    apiVersion: kustomize.toolkit.fluxcd.io/v1
+    kind: Kustomization
+    metadata:
+      name: releases-lab5
+      namespace: flux-system
+    spec:
+      interval: 2m
+      dependsOn:
+        - name: releases
+      sourceRef:
+        kind: OCIRepository
+        name: releases
+      path: ./lab5
+      prune: true
+      retryInterval: 30s
+  YAML
+}
+
+# ==========================================
 # Bootstrap Flux ResourceSet
 # ==========================================
 resource "kubectl_manifest" "rset" {

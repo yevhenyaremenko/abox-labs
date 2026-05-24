@@ -1,0 +1,304 @@
+# Agent Sandbox Controller v0.4.6
+# Installs the controller with full extensions support:
+#   core:       Sandbox CRD (stateful, singleton agent workloads)
+#   extensions: SandboxTemplate, SandboxClaim, SandboxWarmPool
+# Source: https://github.com/kubernetes-sigs/agent-sandbox
+# CRDs live in releases/crds/agent-sandbox-crds.yaml (applied first via releases-crds Kustomization)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-sandbox-system
+  labels:
+    app.kubernetes.io/name: agent-sandbox
+    app.kubernetes.io/version: v0.4.6
+
+---
+
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: agent-sandbox-controller
+  namespace: agent-sandbox-system
+  labels:
+    app: agent-sandbox-controller
+    app.kubernetes.io/name: agent-sandbox
+    app.kubernetes.io/version: v0.4.6
+
+---
+
+# Core controller ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agent-sandbox-controller
+  labels:
+    app.kubernetes.io/name: agent-sandbox
+    app.kubernetes.io/version: v0.4.6
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - persistentvolumeclaims
+  - pods
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - agents.x-k8s.io
+  resources:
+  - sandboxes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - agents.x-k8s.io
+  resources:
+  - sandboxes/finalizers
+  - sandboxes/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agent-sandbox-controller
+  labels:
+    app.kubernetes.io/name: agent-sandbox
+    app.kubernetes.io/version: v0.4.6
+subjects:
+- kind: ServiceAccount
+  name: agent-sandbox-controller
+  namespace: agent-sandbox-system
+roleRef:
+  kind: ClusterRole
+  name: agent-sandbox-controller
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+# Extensions ClusterRole (SandboxTemplate, SandboxClaim, SandboxWarmPool)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: agent-sandbox-controller-extensions
+  labels:
+    app.kubernetes.io/name: agent-sandbox
+    app.kubernetes.io/version: v0.4.6
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+  - update
+- apiGroups:
+  - agents.x-k8s.io
+  resources:
+  - sandboxes
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - extensions.agents.x-k8s.io
+  resources:
+  - sandboxclaims
+  - sandboxtemplates
+  - sandboxwarmpools
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - extensions.agents.x-k8s.io
+  resources:
+  - sandboxclaims/finalizers
+  - sandboxclaims/status
+  - sandboxtemplates/finalizers
+  - sandboxtemplates/status
+  - sandboxwarmpools/finalizers
+  - sandboxwarmpools/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - networking.k8s.io
+  resources:
+  - networkpolicies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: agent-sandbox-controller-extensions
+  labels:
+    app.kubernetes.io/name: agent-sandbox
+    app.kubernetes.io/version: v0.4.6
+subjects:
+- kind: ServiceAccount
+  name: agent-sandbox-controller
+  namespace: agent-sandbox-system
+roleRef:
+  kind: ClusterRole
+  name: agent-sandbox-controller-extensions
+  apiGroup: rbac.authorization.k8s.io
+
+---
+
+# Metrics Service — exposes /metrics on port 8080 (Prometheus scrape target)
+kind: Service
+apiVersion: v1
+metadata:
+  name: agent-sandbox-controller
+  namespace: agent-sandbox-system
+  labels:
+    app: agent-sandbox-controller
+    app.kubernetes.io/name: agent-sandbox
+    app.kubernetes.io/version: v0.4.6
+spec:
+  selector:
+    app: agent-sandbox-controller
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: metrics
+    protocol: TCP
+
+---
+
+# Controller Deployment — extensions mode enables SandboxTemplate, SandboxClaim, SandboxWarmPool
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: agent-sandbox-controller
+  namespace: agent-sandbox-system
+  labels:
+    app: agent-sandbox-controller
+    app.kubernetes.io/name: agent-sandbox
+    app.kubernetes.io/version: v0.4.6
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-sandbox-controller
+  template:
+    metadata:
+      labels:
+        app: agent-sandbox-controller
+        app.kubernetes.io/name: agent-sandbox
+        app.kubernetes.io/version: v0.4.6
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: agent-sandbox-controller
+      containers:
+      - name: agent-sandbox-controller
+        image: registry.k8s.io/agent-sandbox/agent-sandbox-controller:v0.4.6
+        args:
+        - "--leader-elect=true"
+        - "--extensions"
+        ports:
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        - name: healthz
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: healthz
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: healthz
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 10m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 128Mi

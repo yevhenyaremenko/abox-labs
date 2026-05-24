@@ -1,0 +1,49 @@
+# Lab 5 — MCP Server Phoenix Tracing Patch
+# Adds OTEL environment variables to elicitation-mcp-server Deployment.
+# Instructs the server to export traces/metrics to Arize Phoenix via OTLP.
+#
+# CODE CHANGES REQUIRED in abox-labs-mcp-server (separate repo):
+#   1. Add to pyproject.toml dependencies:
+#        "arize-phoenix-otel>=0.6.0",
+#        "openinference-instrumentation-mcp>=0.1.0",
+#   2. In src/abox_labs_mcp_server/main.py, at module top level:
+#        from phoenix.otel import register as _phoenix_register
+#        _phoenix_register(auto_instrument=True)
+#   3. Build and push a new image tag, update elicitation-mcp.yaml image tag.
+#
+# Until a new image with the instrumentation is published, setting these
+# env vars is a no-op for the current image but prepares the deployment.
+# Phoenix must be deployed (releases/phoenix.yaml) before this patch is applied.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elicitation-mcp-server
+  namespace: mcp
+spec:
+  template:
+    spec:
+      containers:
+      - name: server
+        env:
+        # Phoenix OTLP endpoint (HTTP/protobuf, Phoenix default port 6006)
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://phoenix.phoenix.svc.cluster.local:6006"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "http/protobuf"
+        # Service name shown in Phoenix traces
+        - name: OTEL_SERVICE_NAME
+          value: "elicitation-mcp-server"
+        # Resource attributes for filtering in Phoenix
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: "deployment.environment=lab5,service.namespace=mcp,k8s.namespace.name=mcp"
+        # Export both traces and metrics to Phoenix
+        - name: OTEL_TRACES_EXPORTER
+          value: "otlp"
+        - name: OTEL_METRICS_EXPORTER
+          value: "otlp"
+        # Phoenix-specific: project to group traces under
+        - name: PHOENIX_PROJECT_NAME
+          value: "elicitation-mcp"
+        - name: PHOENIX_COLLECTOR_ENDPOINT
+          value: "http://phoenix.phoenix.svc.cluster.local:6006"
