@@ -45,8 +45,10 @@ roleRef:
 
 ---
 
-# ConfigMap with the instrumented Python demo script.
-# Uses opentelemetry-instrument CLI wrapper — no OTel imports needed in user code.
+# ConfigMap with the demo script.
+# OTEL is initialised inside the script via the Python API — no CLI wrapper needed.
+# This avoids the system:anonymous issue that arises when opentelemetry-instrument
+# spawns a subprocess (the k8s client loses its in-cluster token context).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -57,44 +59,55 @@ data:
     """
     Agent Sandbox OTEL Telemetry Demo
     ----------------------------------
-    Creates a Sandbox via the Kubernetes API client, then performs
-    a few operations to generate spans visible in Arize Phoenix.
-
-    Run with:
-      OTEL_EXPORTER_OTLP_ENDPOINT=http://phoenix.phoenix.svc.cluster.local:6006 \
-      OTEL_SERVICE_NAME=sandbox-otel-demo \
-      opentelemetry-instrument python demo.py
+    Initialises OpenTelemetry tracing via the Python API, then creates/lists/
+    deletes a Sandbox through the Kubernetes API.  Traces appear in Phoenix
+    under the project "agent-sandbox-demo".
     """
     import os
     import time
+
+    # ── OTEL setup (must happen before kubernetes client is imported) ─────────
+    from opentelemetry import trace
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.instrumentation.urllib3 import URLlib3Instrumentor
+
+    _otlp_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+    _service_name  = os.environ.get("OTEL_SERVICE_NAME", "agent-sandbox-demo")
+
+    _resource = Resource.create({"service.name": _service_name})
+    _provider = TracerProvider(resource=_resource)
+    if _otlp_endpoint:
+        _exporter = OTLPSpanExporter(endpoint=f"{_otlp_endpoint}/v1/traces")
+        _provider.add_span_processor(BatchSpanProcessor(_exporter))
+    trace.set_tracer_provider(_provider)
+    tracer = trace.get_tracer(__name__)
+
+    # Instrument urllib3 so kubernetes-client HTTP calls become child spans
+    URLlib3Instrumentor().instrument()
+    # ─────────────────────────────────────────────────────────────────────────
+
     from kubernetes import client, config
 
-    # Load in-cluster kubeconfig
     config.load_incluster_config()
-
     sandbox_api = client.CustomObjectsApi()
-    core_api = client.CoreV1Api()
 
-    NAMESPACE = "sandboxes"
+    NAMESPACE    = "sandboxes"
     SANDBOX_NAME = "otel-demo-sandbox"
 
     def create_sandbox() -> dict:
         body = {
             "apiVersion": "agents.x-k8s.io/v1alpha1",
             "kind": "Sandbox",
-            "metadata": {
-                "name": SANDBOX_NAME,
-                "namespace": NAMESPACE,
-            },
+            "metadata": {"name": SANDBOX_NAME, "namespace": NAMESPACE},
             "spec": {
                 "podTemplate": {
                     "spec": {
                         "containers": [
-                            {
-                                "name": "agent",
-                                "image": "python:3.12-slim",
-                                "command": ["sleep", "infinity"],
-                            }
+                            {"name": "agent", "image": "python:3.12-slim",
+                             "command": ["sleep", "infinity"]}
                         ],
                         "restartPolicy": "Always",
                     }
@@ -103,23 +116,17 @@ data:
         }
         try:
             result = sandbox_api.create_namespaced_custom_object(
-                group="agents.x-k8s.io",
-                version="v1alpha1",
-                namespace=NAMESPACE,
-                plural="sandboxes",
-                body=body,
+                group="agents.x-k8s.io", version="v1alpha1",
+                namespace=NAMESPACE, plural="sandboxes", body=body,
             )
             print(f"[sandbox] created: {result['metadata']['name']}")
             return result
         except client.exceptions.ApiException as e:
             if e.status == 409:
-                print(f"[sandbox] already exists, fetching...")
+                print("[sandbox] already exists, fetching...")
                 return sandbox_api.get_namespaced_custom_object(
-                    group="agents.x-k8s.io",
-                    version="v1alpha1",
-                    namespace=NAMESPACE,
-                    plural="sandboxes",
-                    name=SANDBOX_NAME,
+                    group="agents.x-k8s.io", version="v1alpha1",
+                    namespace=NAMESPACE, plural="sandboxes", name=SANDBOX_NAME,
                 )
             raise
 
@@ -128,16 +135,12 @@ data:
         deadline = time.time() + timeout
         while time.time() < deadline:
             obj = sandbox_api.get_namespaced_custom_object(
-                group="agents.x-k8s.io",
-                version="v1alpha1",
-                namespace=NAMESPACE,
-                plural="sandboxes",
-                name=SANDBOX_NAME,
+                group="agents.x-k8s.io", version="v1alpha1",
+                namespace=NAMESPACE, plural="sandboxes", name=SANDBOX_NAME,
             )
-            conditions = obj.get("status", {}).get("conditions", [])
             ready = any(
                 c.get("type") == "Ready" and c.get("status") == "True"
-                for c in conditions
+                for c in obj.get("status", {}).get("conditions", [])
             )
             if ready:
                 print("[sandbox] Ready!")
@@ -145,36 +148,40 @@ data:
             time.sleep(3)
         print("[sandbox] timed out waiting for Ready")
 
+    def list_all_sandboxes() -> list:
+        result = sandbox_api.list_namespaced_custom_object(
+            group="agents.x-k8s.io", version="v1alpha1",
+            namespace=NAMESPACE, plural="sandboxes",
+        )
+        items = result.get("items", [])
+        print(f"[sandbox] found {len(items)} sandbox(es) in {NAMESPACE}")
+        return items
+
     def delete_sandbox() -> None:
         sandbox_api.delete_namespaced_custom_object(
-            group="agents.x-k8s.io",
-            version="v1alpha1",
-            namespace=NAMESPACE,
-            plural="sandboxes",
-            name=SANDBOX_NAME,
+            group="agents.x-k8s.io", version="v1alpha1",
+            namespace=NAMESPACE, plural="sandboxes", name=SANDBOX_NAME,
         )
         print(f"[sandbox] deleted: {SANDBOX_NAME}")
 
-    def list_all_sandboxes() -> list:
-        result = sandbox_api.list_namespaced_custom_object(
-            group="agents.x-k8s.io",
-            version="v1alpha1",
-            namespace=NAMESPACE,
-            plural="sandboxes",
-        )
-        items = result.get("items", [])
-        print(f"[sandbox] found {len(items)} sandbox(es) in namespace {NAMESPACE}")
-        return items
-
     if __name__ == "__main__":
         print("=== Agent Sandbox OTEL Demo ===")
-        print(f"Phoenix endpoint: {os.environ.get('OTEL_EXPORTER_OTLP_ENDPOINT', 'console')}")
+        print(f"OTLP endpoint : {_otlp_endpoint or '(console only)'}")
+        print(f"Service name  : {_service_name}")
 
-        create_sandbox()
-        wait_for_sandbox_ready()
-        list_all_sandboxes()
-        time.sleep(2)
-        delete_sandbox()
+        with tracer.start_as_current_span("sandbox-lifecycle-demo"):
+            with tracer.start_as_current_span("create"):
+                create_sandbox()
+            with tracer.start_as_current_span("wait-ready"):
+                wait_for_sandbox_ready()
+            with tracer.start_as_current_span("list"):
+                list_all_sandboxes()
+            time.sleep(2)
+            with tracer.start_as_current_span("delete"):
+                delete_sandbox()
+
+        # Flush pending spans before the process exits
+        _provider.force_flush()
         print("=== Done — check Phoenix UI for traces ===")
 
 ---
@@ -204,13 +211,7 @@ spec:
             kubernetes \
             opentelemetry-sdk \
             opentelemetry-exporter-otlp-proto-http \
-            opentelemetry-instrumentation \
-            opentelemetry-instrumentation-requests \
-            opentelemetry-instrumentation-urllib3 \
-            arize-phoenix-otel
-          # bootstrap auto-instrumentation hooks
-          # binaries land in /deps/bin — use full path since /deps/bin is not on PATH
-          PYTHONPATH=/deps /deps/bin/opentelemetry-bootstrap -a install --target /deps 2>/dev/null || true
+            opentelemetry-instrumentation-urllib3
         volumeMounts:
         - name: deps
           mountPath: /deps
@@ -221,11 +222,7 @@ spec:
         - sh
         - -c
         - |
-          PYTHONPATH=/deps /deps/bin/opentelemetry-instrument \
-            --traces_exporter otlp \
-            --metrics_exporter otlp \
-            --logs_exporter console \
-            python /scripts/demo.py
+          PYTHONPATH=/deps python /scripts/demo.py
         env:
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "http://phoenix.phoenix.svc.cluster.local:6006"
