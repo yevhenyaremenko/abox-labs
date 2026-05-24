@@ -479,7 +479,20 @@ guardrails-test-pass:
 # ── Network-policy demo (KRO + AgenticSandbox) ───────────────────────────────
 
 nw-policy-demo-apply:
-	@echo "$(CYAN)Applying AgenticSandbox demo (namespace: sandboxes-nw)...$(NC)"
+	@echo "$(CYAN)Step 1/3 — Applying Namespace + ResourceGraphDefinition...$(NC)"
+	@kubectl apply -f releases/lab5/network-policies.yaml 2>&1 | grep -v "no matches for kind" || true
+	@echo ""
+	@echo "$(CYAN)Step 2/3 — Waiting for KRO to register AgenticSandbox CRD (up to 60s)...$(NC)"
+	@deadline=$$((SECONDS + 60)); \
+	until kubectl get crd agenticsandboxes.custom.agents.x-k8s.io >/dev/null 2>&1; do \
+	  if [ $$SECONDS -ge $$deadline ]; then \
+	    printf '\n$(RED)Timeout: AgenticSandbox CRD not registered after 60s$(NC)\n'; exit 1; \
+	  fi; \
+	  printf '.'; sleep 3; \
+	done; \
+	echo " Ready."
+	@echo ""
+	@echo "$(CYAN)Step 3/3 — Applying AgenticSandbox demo instance...$(NC)"
 	kubectl apply -f releases/lab5/network-policies.yaml
 	@echo ""
 	@echo "$(CYAN)KRO will reconcile AgenticSandbox 'demo' into Sandbox + Service + NetworkPolicy.$(NC)"

@@ -6,3 +6,4 @@ resources:
   - agentgateway-crds.yaml
   - kagent-crds.yaml
   - agent-sandbox-crds.yaml
+  - kro-crds.yaml
