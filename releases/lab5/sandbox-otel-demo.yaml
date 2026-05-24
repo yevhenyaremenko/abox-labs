@@ -209,7 +209,8 @@ spec:
             opentelemetry-instrumentation-urllib3 \
             arize-phoenix-otel
           # bootstrap auto-instrumentation hooks
-          PYTHONPATH=/deps opentelemetry-bootstrap -a install --target /deps 2>/dev/null || true
+          # binaries land in /deps/bin — use full path since /deps/bin is not on PATH
+          PYTHONPATH=/deps /deps/bin/opentelemetry-bootstrap -a install --target /deps 2>/dev/null || true
         volumeMounts:
         - name: deps
           mountPath: /deps
@@ -220,7 +221,7 @@ spec:
         - sh
         - -c
         - |
-          PYTHONPATH=/deps opentelemetry-instrument \
+          PYTHONPATH=/deps /deps/bin/opentelemetry-instrument \
             --traces_exporter otlp \
             --metrics_exporter otlp \
             --logs_exporter console \
