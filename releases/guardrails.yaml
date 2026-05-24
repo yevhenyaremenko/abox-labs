@@ -1,0 +1,119 @@
+# Agentgateway Guardrails — Webhook-based prompt/response filtering
+# Docs: https://agentgateway.dev/docs/kubernetes/latest/llm/guardrails/webhook/guardrails/
+#
+# Architecture:
+#   client → agentgateway → [/request webhook] → LLM → [/response webhook] → client
+#
+# Webhook behaviour (from solo-io reference implementation):
+#   Request phase:
+#     - prompt contains "block"  → 403 Forbidden (request never reaches LLM)
+#     - prompt contains "mask"   → word replaced with "****" before sending to LLM
+#     - anything else            → pass through unchanged
+#   Response phase:
+#     - LLM reply contains "mask" → masked before returning to client
+#     - anything else             → pass through unchanged
+#
+# Test:
+#   make guardrails-test-block   (expect 403)
+#   make guardrails-test-mask    (expect masked content)
+#   make guardrails-test-pass    (expect normal response)
+---
+# Webhook server — reference implementation from solo-io
+# Source: https://github.com/solo-io/gloo-gateway-use-cases/tree/main/ai-guardrail-webhook-server
+# Endpoints:  POST /request   POST /response
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-guardrail-webhook
+  namespace: agentgateway-system
+  labels:
+    app: ai-guardrail
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-guardrail-webhook
+  template:
+    metadata:
+      labels:
+        app: ai-guardrail-webhook
+    spec:
+      containers:
+      - name: webhook
+        image: gcr.io/solo-public/docs/ai-guardrail-webhook:latest
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        readinessProbe:
+          httpGet:
+            path: /docs
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+
+---
+# ClusterIP service — agentgateway reaches the webhook in-cluster
+# (LoadBalancer is not needed in a KinD lab environment)
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-guardrail-webhook
+  namespace: agentgateway-system
+  labels:
+    app: ai-guardrail
+spec:
+  selector:
+    app: ai-guardrail-webhook
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP
+
+---
+# AgentgatewayPolicy — attaches guardrails to the openai HTTPRoute.
+# Both request and response phases are guarded by the same webhook.
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayPolicy
+metadata:
+  name: openai-prompt-guard
+  namespace: agentgateway-system
+spec:
+  targetRefs:
+  - group: gateway.networking.k8s.io
+    kind: HTTPRoute
+    name: openai
+  backend:
+    ai:
+      promptGuard:
+        request:
+        - webhook:
+            backendRef:
+              kind: Service
+              name: ai-guardrail-webhook
+              port: 8000
+        response:
+        - webhook:
+            backendRef:
+              kind: Service
+              name: ai-guardrail-webhook
+              port: 8000
+
+---
+# AgentgatewayParameters — optional performance tuning for webhook connections
+apiVersion: agentgateway.dev/v1alpha1
+kind: AgentgatewayParameters
+metadata:
+  name: agw-guardrail-params
+  namespace: agentgateway-system
+spec:
+  env:
+  - name: GUARDRAIL_WEBHOOK_MAX_CONNECTIONS
+    value: "50"
+  - name: GUARDRAIL_WEBHOOK_KEEPALIVE_SECONDS
+    value: "60"
