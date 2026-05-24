@@ -3,7 +3,7 @@
 #
 # Protects the agentgateway-external Gateway with a mandatory API key.
 # Clients must include the key in the Authorization header:
-#   Authorization: <api-key-value>
+#   Authorization: Bearer <api-key-value>
 #
 # Test (no key → 401):
 #   make apikey-test-unauth
