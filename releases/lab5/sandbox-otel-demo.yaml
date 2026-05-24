@@ -206,21 +206,20 @@ spec:
         - sh
         - -c
         - |
-          pip install --quiet --target /deps \
+          python3 -m venv /venv
+          /venv/bin/pip install --quiet \
             kubernetes \
             opentelemetry-sdk \
             opentelemetry-exporter-otlp-proto-http
         volumeMounts:
-        - name: deps
-          mountPath: /deps
+        - name: venv
+          mountPath: /venv
       containers:
       - name: demo
         image: python:3.12-slim
         command:
-        - sh
-        - -c
-        - |
-          PYTHONPATH=/deps python /scripts/demo.py
+        - /venv/bin/python
+        - /scripts/demo.py
         env:
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "http://phoenix.phoenix.svc.cluster.local:6006"
@@ -231,12 +230,12 @@ spec:
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: "deployment.environment=lab5,k8s.namespace.name=sandboxes"
         volumeMounts:
-        - name: deps
-          mountPath: /deps
+        - name: venv
+          mountPath: /venv
         - name: scripts
           mountPath: /scripts
       volumes:
-      - name: deps
+      - name: venv
         emptyDir: {}
       - name: scripts
         configMap:
