@@ -46,7 +46,10 @@ spec:
   values:
     server:
       port: 6006
-    # Persist traces across pod restarts
+    # SQLite persistence strategy (mutually exclusive with postgresql.enabled=true).
+    # Stores trace data in a PVC backed by the cluster's default storage class.
     persistence:
       enabled: true
       size: 2Gi
+    postgresql:
+      enabled: false
