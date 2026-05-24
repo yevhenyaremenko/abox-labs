@@ -53,3 +53,7 @@ spec:
       size: 2Gi
     postgresql:
       enabled: false
+    # DEMO ONLY — authentication disabled for local lab convenience.
+    # Enable auth and set a strong password before exposing Phoenix externally.
+    auth:
+      enableAuth: false
