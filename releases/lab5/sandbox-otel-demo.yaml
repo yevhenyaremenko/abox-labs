@@ -72,7 +72,7 @@ data:
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-    from opentelemetry.instrumentation.urllib3 import URLlib3Instrumentor
+    from opentelemetry.instrumentation.urllib3 import URLLib3Instrumentor
 
     _otlp_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
     _service_name  = os.environ.get("OTEL_SERVICE_NAME", "agent-sandbox-demo")
@@ -86,7 +86,7 @@ data:
     tracer = trace.get_tracer(__name__)
 
     # Instrument urllib3 so kubernetes-client HTTP calls become child spans
-    URLlib3Instrumentor().instrument()
+    URLLib3Instrumentor().instrument()
     # ─────────────────────────────────────────────────────────────────────────
 
     from kubernetes import client, config
