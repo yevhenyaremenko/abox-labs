@@ -55,5 +55,11 @@ spec:
       enabled: false
     # DEMO ONLY — authentication disabled for local lab convenience.
     # Enable auth and set a strong password before exposing Phoenix externally.
+    # PHOENIX_SECRET must contain at least one digit (Phoenix startup validation),
+    # so we pin an explicit value here to prevent Helm from auto-generating an
+    # all-alpha string that fails the check.
     auth:
       enableAuth: false
+      secret:
+        - key: "PHOENIX_SECRET"
+          value: "ZWLLEXTOKVFljbACgWjj1xFWAjofZYDh"
