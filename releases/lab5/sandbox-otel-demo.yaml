@@ -91,10 +91,11 @@ data:
     from kubernetes import client
 
     # Build the k8s client configuration manually instead of load_incluster_config().
-    # load_incluster_config() sets the token via api_key dict, but the kubernetes
-    # Python client's auth pipeline silently drops it in some environments.
-    # Reading the token directly and passing it via api_key_prefix is reliable
-    # (matches how the raw urllib3 debug test authenticated successfully).
+    # load_incluster_config() can silently drop auth in some environments; reading
+    # the token directly is more reliable.  The key MUST be 'BearerToken' — that is
+    # the scheme name the generated CustomObjectsApi code passes to update_params_for_auth.
+    # Using any other key (e.g. 'authorization') causes auth_settings() to return {}
+    # and the request falls through as system:anonymous → 403.
     _token = open("/var/run/secrets/kubernetes.io/serviceaccount/token").read().strip()
     _k8s_host = (
         f"https://{os.environ['KUBERNETES_SERVICE_HOST']}"
@@ -104,8 +105,13 @@ data:
     _k8s_cfg.host = _k8s_host
     _k8s_cfg.ssl_ca_cert = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
     _k8s_cfg.verify_ssl = True
-    _k8s_cfg.api_key        = {"authorization": _token}
-    _k8s_cfg.api_key_prefix = {"authorization": "Bearer"}
+    # The kubernetes Python client's CustomObjectsApi passes auth_settings=['BearerToken']
+    # to update_params_for_auth, which looks up configuration.auth_settings()['BearerToken'].
+    # auth_settings() only returns an entry when api_key has the key 'BearerToken' (not
+    # 'authorization'). Using any other key silently produces an empty auth_settings dict,
+    # causing the request to fall through as system:anonymous → 403.
+    _k8s_cfg.api_key        = {"BearerToken": _token}
+    _k8s_cfg.api_key_prefix = {"BearerToken": "Bearer"}
 
     _api_client = client.ApiClient(configuration=_k8s_cfg)
     sandbox_api = client.CustomObjectsApi(api_client=_api_client)
