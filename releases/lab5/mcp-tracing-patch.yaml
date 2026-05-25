@@ -2,17 +2,11 @@
 # Adds OTEL environment variables to elicitation-mcp-server Deployment.
 # Instructs the server to export traces/metrics to Arize Phoenix via OTLP.
 #
-# CODE CHANGES REQUIRED in abox-labs-mcp-server (separate repo):
-#   1. Add to pyproject.toml dependencies:
-#        "arize-phoenix-otel>=0.6.0",
-#        "openinference-instrumentation-mcp>=0.1.0",
-#   2. In src/abox_labs_mcp_server/main.py, at module top level:
-#        from phoenix.otel import register as _phoenix_register
-#        _phoenix_register(auto_instrument=True)
-#   3. Build and push a new image tag, update elicitation-mcp.yaml image tag.
+# Instrumentation implemented in abox-labs-mcp-server v0.2.0 (lab5 branch):
+#   - arize-phoenix-otel + openinference-instrumentation-mcp added to pyproject.toml
+#   - phoenix.otel.register(auto_instrument=True) called at startup in main.py
+#   - image tag bumped to 0.2.0 in releases/elicitation-mcp.yaml
 #
-# Until a new image with the instrumentation is published, setting these
-# env vars is a no-op for the current image but prepares the deployment.
 # Phoenix must be deployed (releases/phoenix.yaml) before this patch is applied.
 ---
 apiVersion: apps/v1
