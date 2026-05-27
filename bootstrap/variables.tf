@@ -19,11 +19,11 @@ variable "releases_version" {
 variable "enable_lab3_resources" {
   description = "Deploy Lab 3 resources: elicitation-mcp-server (custom Python MCP server with Elicitation support for ambiguous K8s queries) and lab3-agent. Disabled by default."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "enable_lab5_resources" {
   description = "Deploy Lab 5 resources: Agent Sandbox demo (SandboxTemplate, SandboxClaim), OTEL telemetry demo Job, and MCP server Phoenix tracing patch. Requires agent-sandbox and phoenix from the base releases. Disabled by default."
   type        = bool
-  default     = false
+  default     = true
 }

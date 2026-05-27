@@ -218,7 +218,7 @@ resource "kubectl_manifest" "rset" {
             name: releases
           path: ./
           prune: true
-          wait: true
+          wait: false
           retryInterval: 30s
   YAML
 }
