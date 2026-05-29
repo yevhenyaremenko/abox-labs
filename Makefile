@@ -9,7 +9,7 @@ ifeq (a2a-agent-card,$(firstword $(MAKECMDGOALS)))
   $(eval $(_A2A_ARGS):;@:)
 endif
 
-.PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway a2a-agent-card inventory-agents inventory-servers governance-score governance-servers governance-ui qdrant-info qdrant-collections
+.PHONY: help run tools tofu apply secrets check-env down push test-api test-openai test-openai-direct test-openai-via-agentgateway a2a-agent-card inventory-agents inventory-servers governance-score governance-servers governance-ui qdrant-info qdrant-collections sandbox-status sandbox-list phoenix-ui phoenix-otel-demo sandbox-demo-run sandbox-demo-clean apikey-test-unauth apikey-test-auth guardrails-test-block guardrails-test-mask guardrails-test-pass nw-policy-demo-apply nw-policy-demo-status nw-policy-demo-clean
 
 help:
 	@echo "Available targets:"
@@ -34,6 +34,26 @@ help:
 	@echo "  governance-ui                - Open MCPG dashboard in browser (port-forward auto)"
 	@echo "  qdrant-info                  - Show Qdrant cluster info (port-forward auto)"
 	@echo "  qdrant-collections           - List Qdrant collections (port-forward auto)"
+	@echo ""
+	@echo "Lab 5 — Agent Sandbox + Phoenix Observability:"
+	@echo "  sandbox-status               - Show agent-sandbox controller health and CRD list"
+	@echo "  sandbox-list                 - List all Sandbox resources in the cluster"
+	@echo "  sandbox-demo-run             - Apply Lab 5 sandbox demo resources (SandboxTemplate, SandboxClaim)"
+	@echo "  sandbox-demo-clean           - Delete Lab 5 sandbox demo resources"
+	@echo "  phoenix-ui                   - Open Arize Phoenix UI in browser (port-forward :6006)"
+	@echo "  phoenix-otel-demo            - Trigger the OTEL sandbox demo Job (sends traces to Phoenix)"
+	@echo ""
+	@echo "Network-policy composition (KRO + Sandbox):"
+	@echo "  nw-policy-demo-apply         - Apply AgenticSandbox demo (Sandbox + Service + NetworkPolicy via KRO)"
+	@echo "  nw-policy-demo-status        - Show AgenticSandbox, Sandbox, Service, NetworkPolicy status"
+	@echo "  nw-policy-demo-clean         - Delete AgenticSandbox demo resources"
+	@echo ""
+	@echo "Additional tasks — Agentgateway security & guardrails:"
+	@echo "  apikey-test-unauth           - Call agentgateway without API key (expect 401)"
+	@echo "  apikey-test-auth             - Call agentgateway with valid API key (expect 200)"
+	@echo "  guardrails-test-block        - Send prompt with 'block' keyword (expect 403 from guardrail)"
+	@echo "  guardrails-test-mask         - Send prompt with 'mask' keyword (expect masked content)"
+	@echo "  guardrails-test-pass         - Send normal prompt (expect unmodified LLM response)"
 
 run: check-env
 	@bash scripts/setup.sh
@@ -298,3 +318,207 @@ qdrant-collections:
 	printf '$(CYAN)Collections:$(NC)\n'; \
 	printf '%s\n' "$$BODY" | jq --sort-keys .; \
 	[ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]
+
+# =============================================================================
+# Lab 5 — Agent Sandbox + Arize Phoenix Observability
+# =============================================================================
+
+sandbox-status:
+	@echo "$(CYAN)=== Agent Sandbox Controller ===$(NC)"
+	@kubectl rollout status deployment/agent-sandbox-controller -n agent-sandbox-system 2>/dev/null \
+	  && printf '$(GREEN)[PASS]$(NC) agent-sandbox-controller is ready\n' \
+	  || printf '$(RED)[FAIL]$(NC) agent-sandbox-controller not ready (is agent-sandbox.yaml deployed?)\n'
+	@echo ""
+	@echo "$(CYAN)CRDs installed:$(NC)"
+	@kubectl get crds | grep -E 'agents.x-k8s.io|extensions.agents.x-k8s.io' || echo "  (none found)"
+
+sandbox-list:
+	@echo "$(CYAN)=== Sandboxes in all namespaces ===$(NC)"
+	@kubectl get sandboxes -A 2>/dev/null || echo "  (no sandboxes or CRD not installed)"
+	@echo ""
+	@echo "$(CYAN)=== SandboxClaims ===$(NC)"
+	@kubectl get sandboxclaims -A 2>/dev/null || echo "  (none)"
+	@echo ""
+	@echo "$(CYAN)=== SandboxTemplates ===$(NC)"
+	@kubectl get sandboxtemplates -A 2>/dev/null || echo "  (none)"
+
+sandbox-demo-run:
+	@echo "Applying Lab 5 sandbox demo resources..."
+	@kubectl apply -k releases/lab5/
+	@echo ""
+	@echo "$(CYAN)SandboxTemplate:$(NC)"
+	@kubectl get sandboxtemplate -n sandboxes 2>/dev/null || true
+	@echo "$(CYAN)SandboxClaim:$(NC)"
+	@kubectl get sandboxclaim -n sandboxes 2>/dev/null || true
+
+sandbox-demo-clean:
+	@echo "Deleting Lab 5 sandbox demo resources..."
+	@kubectl delete -k releases/lab5/ --ignore-not-found=true
+	@kubectl delete namespace sandboxes --ignore-not-found=true
+
+phoenix-ui:
+	@echo "Port-forwarding Arize Phoenix UI to http://localhost:6006 — press Ctrl+C to stop"
+	@kubectl port-forward svc/phoenix-svc 6006:6006 -n phoenix
+
+phoenix-otel-demo:
+	@echo "$(CYAN)Triggering OTEL sandbox demo Job (traces → Phoenix)...$(NC)"
+	@kubectl delete job sandbox-otel-demo -n sandboxes --ignore-not-found=true >/dev/null 2>&1
+	@kubectl apply -f releases/lab5/sandbox-otel-demo.yaml
+	@echo ""
+	@echo "$(CYAN)Waiting for Job to complete (up to 3 min)...$(NC)"
+	@kubectl wait job/sandbox-otel-demo -n sandboxes --for=condition=complete --timeout=180s \
+	  && printf '$(GREEN)[PASS]$(NC) Demo Job completed — check Phoenix UI: make phoenix-ui\n' \
+	  || printf '$(RED)[FAIL]$(NC) Job did not complete in time. Check logs:\n  kubectl logs -n sandboxes -l job-name=sandbox-otel-demo\n'
+
+# =============================================================================
+# Additional Tasks — Agentgateway API Key Auth & Guardrails
+# =============================================================================
+
+# Shared port-forward helper (background, auto-killed via trap)
+_AGW_URL := http://localhost:8080/v1beta/openai/openai/chat/completions
+_AGW_APIKEY := abox-demo-api-key-2024
+
+apikey-test-unauth:
+	@echo "$(CYAN)Testing API key auth — no key (expect 401)...$(NC)"
+	@set -e; \
+	kubectl port-forward deployment/agentgateway-external -n agentgateway-system 8080:80 >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS $(_AGW_URL) \
+	  -H 'Content-Type: application/json' \
+	  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"hello"}]}' \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	if [ "$$STATUS" -eq 401 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) Got 401 Unauthorized — API key auth is enforced\n'; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) Expected 401, got HTTP %s\n' "$$STATUS"; \
+	fi
+
+apikey-test-auth:
+	@echo "$(CYAN)Testing API key auth — valid key (expect 200)...$(NC)"
+	@set -e; \
+	kubectl port-forward deployment/agentgateway-external -n agentgateway-system 8080:80 >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS $(_AGW_URL) \
+	  -H 'Content-Type: application/json' \
+	  -H 'Authorization: Bearer $(_AGW_APIKEY)' \
+	  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"Say hello"}]}' \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) Got HTTP %s — request accepted with valid API key\n' "$$STATUS"; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) Expected 2xx, got HTTP %s\n' "$$STATUS"; \
+	fi; \
+	printf '$(CYAN)Response:$(NC) %s\n' "$$BODY"
+
+guardrails-test-block:
+	@echo "$(CYAN)Testing guardrails — 'block' keyword in prompt (expect 403)...$(NC)"
+	@set -e; \
+	kubectl port-forward deployment/agentgateway-external -n agentgateway-system 8080:80 >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS $(_AGW_URL) \
+	  -H 'Content-Type: application/json' \
+	  -H 'Authorization: Bearer $(_AGW_APIKEY)' \
+	  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"Please block this request"}]}' \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	if [ "$$STATUS" -eq 403 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) Got 403 — guardrail blocked the request\n'; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) Expected 403 from guardrail, got HTTP %s\n' "$$STATUS"; \
+	fi; \
+	printf '$(CYAN)Body:$(NC) %s\n' "$$BODY"
+
+guardrails-test-mask:
+	@echo "$(CYAN)Testing guardrails — 'mask' keyword in prompt (expect masked content)...$(NC)"
+	@set -e; \
+	kubectl port-forward deployment/agentgateway-external -n agentgateway-system 8080:80 >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS $(_AGW_URL) \
+	  -H 'Content-Type: application/json' \
+	  -H 'Authorization: Bearer $(_AGW_APIKEY)' \
+	  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"mask my secret token abc123"}]}' \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	printf '$(CYAN)HTTP %s — check that prompt reached LLM with "mask" replaced by "****"\n$(NC)' "$$STATUS"; \
+	printf '$(CYAN)Response:$(NC) %s\n' "$$BODY"
+
+guardrails-test-pass:
+	@echo "$(CYAN)Testing guardrails — normal prompt (expect LLM response, no blocking)...$(NC)"
+	@set -e; \
+	kubectl port-forward deployment/agentgateway-external -n agentgateway-system 8080:80 >/dev/null 2>&1 & \
+	PF_PID=$$!; \
+	trap 'kill $$PF_PID >/dev/null 2>&1 || true' EXIT; \
+	sleep 2; \
+	RESP=$$(curl -sS $(_AGW_URL) \
+	  -H 'Content-Type: application/json' \
+	  -H 'Authorization: Bearer $(_AGW_APIKEY)' \
+	  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"What is 2+2?"}]}' \
+	  -w '\nHTTP_STATUS:%{http_code}'); \
+	STATUS=$$(printf '%s\n' "$$RESP" | sed -n 's/^HTTP_STATUS://p' | tail -n1); \
+	BODY=$$(printf '%s\n' "$$RESP" | sed '$$d'); \
+	if [ "$$STATUS" -ge 200 ] && [ "$$STATUS" -lt 300 ]; then \
+	  printf '$(GREEN)[PASS]$(NC) HTTP %s — guardrail passed the request through\n' "$$STATUS"; \
+	else \
+	  printf '$(RED)[FAIL]$(NC) Unexpected HTTP %s\n' "$$STATUS"; \
+	fi; \
+	printf '$(CYAN)Response:$(NC) %s\n' "$$BODY"
+
+# ── Network-policy demo (KRO + AgenticSandbox) ───────────────────────────────
+
+nw-policy-demo-apply:
+	@echo "$(CYAN)Step 1/3 — Applying Namespace + ResourceGraphDefinition...$(NC)"
+	@kubectl apply -f releases/lab5/network-policies.yaml 2>&1 | grep -v "no matches for kind" || true
+	@echo ""
+	@echo "$(CYAN)Step 2/3 — Waiting for KRO to register AgenticSandbox CRD (up to 60s)...$(NC)"
+	@deadline=$$((SECONDS + 60)); \
+	until kubectl get crd agenticsandboxes.custom.agents.x-k8s.io >/dev/null 2>&1; do \
+	  if [ $$SECONDS -ge $$deadline ]; then \
+	    printf '\n$(RED)Timeout: AgenticSandbox CRD not registered after 60s$(NC)\n'; exit 1; \
+	  fi; \
+	  printf '.'; sleep 3; \
+	done; \
+	echo " Ready."
+	@echo ""
+	@echo "$(CYAN)Step 3/3 — Applying AgenticSandbox demo instance...$(NC)"
+	kubectl apply -f releases/lab5/network-policies.yaml
+	@echo ""
+	@echo "$(CYAN)KRO will reconcile AgenticSandbox 'demo' into Sandbox + Service + NetworkPolicy.$(NC)"
+	@echo "Run 'make nw-policy-demo-status' to watch progress."
+
+nw-policy-demo-status:
+	@echo "$(CYAN)=== KRO ResourceGraphDefinition ===$(NC)"
+	kubectl get resourcegraphdefinition agentic-sandbox -n sandboxes-nw 2>/dev/null || echo "  (not found — KRO may still be installing)"
+	@echo ""
+	@echo "$(CYAN)=== AgenticSandbox instances ===$(NC)"
+	kubectl get agenticsandboxes -n sandboxes-nw 2>/dev/null || echo "  (CRD not yet registered by KRO)"
+	@echo ""
+	@echo "$(CYAN)=== Sandbox pods ===$(NC)"
+	kubectl get sandboxes -n sandboxes-nw 2>/dev/null || echo "  (none)"
+	kubectl get pods -n sandboxes-nw -l sandbox=demo 2>/dev/null || true
+	@echo ""
+	@echo "$(CYAN)=== Service ===$(NC)"
+	kubectl get svc -n sandboxes-nw 2>/dev/null || true
+	@echo ""
+	@echo "$(CYAN)=== NetworkPolicy ===$(NC)"
+	kubectl get networkpolicy -n sandboxes-nw 2>/dev/null || echo "  (none — networkPolicy.enabled may be false)"
+	kubectl describe networkpolicy allow-frontend-to-backend -n sandboxes-nw 2>/dev/null || true
+
+nw-policy-demo-clean:
+	@echo "$(CYAN)Deleting AgenticSandbox demo resources...$(NC)"
+	kubectl delete agenticsandbox demo -n sandboxes-nw 2>/dev/null || true
+	kubectl delete resourcegraphdefinition agentic-sandbox -n sandboxes-nw 2>/dev/null || true
+	kubectl delete namespace sandboxes-nw 2>/dev/null || true
+	@echo "$(GREEN)Done.$(NC)"

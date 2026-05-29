@@ -13,3 +13,8 @@ resources:
   - mcp-governance.yaml
   - qdrant.yaml
   - sample-app.yaml
+  - agent-sandbox.yaml
+  - phoenix.yaml
+  - kro.yaml
+  - apikey-auth.yaml
+  - guardrails.yaml

@@ -1,0 +1,43 @@
+# Lab 5 — MCP Server Phoenix Tracing Patch
+# Adds OTEL environment variables to elicitation-mcp-server Deployment.
+# Instructs the server to export traces/metrics to Arize Phoenix via OTLP.
+#
+# Instrumentation implemented in abox-labs-mcp-server v0.2.0 (lab5 branch):
+#   - arize-phoenix-otel + openinference-instrumentation-mcp added to pyproject.toml
+#   - phoenix.otel.register(auto_instrument=True) called at startup in main.py
+#   - image tag bumped to 0.2.0 in releases/elicitation-mcp.yaml
+#
+# Phoenix must be deployed (releases/phoenix.yaml) before this patch is applied.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elicitation-mcp-server
+  namespace: mcp
+spec:
+  template:
+    spec:
+      containers:
+      - name: server
+        env:
+        # Phoenix OTLP endpoint (HTTP/protobuf, Phoenix default port 6006)
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://phoenix-svc.phoenix.svc.cluster.local:6006"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "http/protobuf"
+        # Service name shown in Phoenix traces
+        - name: OTEL_SERVICE_NAME
+          value: "elicitation-mcp-server"
+        # Resource attributes for filtering in Phoenix
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: "deployment.environment=lab5,service.namespace=mcp,k8s.namespace.name=mcp"
+        # Export both traces and metrics to Phoenix
+        - name: OTEL_TRACES_EXPORTER
+          value: "otlp"
+        - name: OTEL_METRICS_EXPORTER
+          value: "otlp"
+        # Phoenix-specific: project to group traces under
+        - name: PHOENIX_PROJECT_NAME
+          value: "elicitation-mcp"
+        - name: PHOENIX_COLLECTOR_ENDPOINT
+          value: "http://phoenix-svc.phoenix.svc.cluster.local:6006"
